@@ -1,0 +1,6 @@
+# LeanMemFlow – Python dependencies
+# Runtime: Python 3.10+ standard library only (csv, pathlib, etc.)
+
+# --- Testing ---
+pytest>=7.4,<9
+pytest-cov>=4.1,<6

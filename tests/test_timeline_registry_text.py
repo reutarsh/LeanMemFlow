@@ -1,0 +1,408 @@
+"""Tests for timeline_registry semantic schema enrichment and extraction integration."""
+
+from __future__ import annotations
+
+import csv
+import hashlib
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from extractors.timeline_process_text import (
+    TIMELINE_PROCESS_GENERIC_HEADERS,
+    TIMELINE_PROCESS_OUTPUT_HEADERS,
+)
+from extractors.timeline_registry_text import (
+    TIMELINE_REGISTRY_GENERIC_HEADERS,
+    TIMELINE_REGISTRY_OUTPUT_HEADERS,
+    enrich_timeline_registry_csv,
+)
+from memflow_common.csv_io import read_csv_safe
+
+GENERIC_HEADERS = list(TIMELINE_REGISTRY_GENERIC_HEADERS)
+
+NORMAL_PATH = r"\Software\Microsoft\Windows\CurrentVersion\Run"
+PATH_WITH_SPACES = r"\Software\My App\Run Key"
+PATH_WITH_COMMA = r"\Software\foo,bar\baz"
+PATH_WITH_QUOTES = r'\Software\foo"bar\baz'
+PATH_WITH_PIPE = r"\Software\foo|bar\baz"
+PATH_WITH_AT = r"\Software\foo@bar\baz"
+PATH_WITH_BRACKETS = r"\Software\foo[1]\bar"
+PATH_WITH_UNICODE = r"\Software\עברית\Run"
+
+
+def _write_csv(path: Path, headers: list[str], rows: list[list[str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh, quoting=csv.QUOTE_ALL)
+        writer.writerow(headers)
+        writer.writerows(rows)
+
+
+def _sample_row(text: str) -> list[str]:
+    return [
+        "2024-01-15 08:00:00",
+        "REG",
+        "Write",
+        "1234",
+        "0",
+        "0",
+        text,
+        "",
+    ]
+
+
+def _semantic_row(registry_path: str = NORMAL_PATH) -> list[str]:
+    return [
+        "2024-01-15 08:00:00",
+        "REG",
+        "Write",
+        registry_path,
+        "",
+    ]
+
+
+def _cell(row: dict[str, str], *names: str) -> str:
+    for name in names:
+        if name in row and row[name] is not None:
+            return row[name].strip()
+    return ""
+
+
+def _truncate(value: str, max_len: int) -> str:
+    if value is None:
+        return ""
+    return value[:max_len] if len(value) > max_len else value
+
+
+def _map_timeline_registry(row: dict[str, str]) -> dict[str, str]:
+    """Mirror C# MapTimelineRegistry field resolution."""
+    return {
+        "Time": _truncate(_cell(row, "Time"), 100),
+        "Type": _truncate(_cell(row, "Type"), 100),
+        "Action": _truncate(_cell(row, "Action"), 100),
+        "Pid": _truncate(_cell(row, "PID", "pid"), 50),
+        "Value32": _truncate(_cell(row, "Value32"), 100),
+        "Value64": _truncate(_cell(row, "Value64"), 100),
+        "Text": _cell(row, "RegistryPath", "Text"),
+        "Pad": _truncate(_cell(row, "Pad"), 100),
+    }
+
+
+def _get_row_value(row: dict[str, str], *keys: str) -> str:
+    for key in keys:
+        if key in row and row[key] is not None:
+            return row[key].strip()
+    return ""
+
+
+def _build_timeline_registry_event_row(row: dict[str, str]) -> str:
+    """Mirror C# RowHashBuilder.BuildTimelineRegistryEventRow."""
+    values = [
+        _get_row_value(row, "Time", "time"),
+        _get_row_value(row, "Type", "type"),
+        _get_row_value(row, "Action", "action"),
+        "",
+        "",
+        "",
+        _get_row_value(row, "RegistryPath", "Text"),
+        _get_row_value(row, "Pad"),
+    ]
+    joined = "||".join(values)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()
+
+
+def _row_dict(headers: list[str], values: list[str]) -> dict[str, str]:
+    return dict(zip(headers, values))
+
+
+class TestEnrichTimelineRegistryCsv:
+    @pytest.fixture
+    def sample_rows(self) -> list[list[str]]:
+        return [
+            _sample_row(NORMAL_PATH),
+            _sample_row(PATH_WITH_SPACES),
+            _sample_row(""),
+        ]
+
+    def test_exact_final_header_order(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "timeline_registry.csv"
+        _write_csv(csv_path, GENERIC_HEADERS, [_sample_row(NORMAL_PATH)])
+
+        enrich_timeline_registry_csv(csv_path)
+        table = read_csv_safe(csv_path)
+
+        assert table.headers == list(TIMELINE_REGISTRY_OUTPUT_HEADERS)
+
+    def test_dropped_generic_columns_absent(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "timeline_registry.csv"
+        _write_csv(csv_path, GENERIC_HEADERS, [_sample_row(NORMAL_PATH)])
+
+        enrich_timeline_registry_csv(csv_path)
+        table = read_csv_safe(csv_path)
+
+        assert "PID" not in table.headers
+        assert "Value32" not in table.headers
+        assert "Value64" not in table.headers
+        assert "Text" not in table.headers
+
+    def test_registry_path_equals_original_text(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "timeline_registry.csv"
+        _write_csv(csv_path, GENERIC_HEADERS, [_sample_row(NORMAL_PATH)])
+
+        enrich_timeline_registry_csv(csv_path)
+        table = read_csv_safe(csv_path)
+
+        assert table.rows[0][3] == NORMAL_PATH
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            PATH_WITH_SPACES,
+            PATH_WITH_COMMA,
+            PATH_WITH_QUOTES,
+            PATH_WITH_PIPE,
+            PATH_WITH_AT,
+            PATH_WITH_BRACKETS,
+            PATH_WITH_UNICODE,
+        ],
+    )
+    def test_special_character_paths_preserved(self, tmp_path: Path, path: str) -> None:
+        csv_path = tmp_path / "timeline_registry.csv"
+        _write_csv(csv_path, GENERIC_HEADERS, [_sample_row(path)])
+
+        enrich_timeline_registry_csv(csv_path)
+        table = read_csv_safe(csv_path)
+
+        assert table.rows[0][3] == path
+
+    def test_empty_text(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "timeline_registry.csv"
+        _write_csv(csv_path, GENERIC_HEADERS, [_sample_row("")])
+
+        enrich_timeline_registry_csv(csv_path)
+        table = read_csv_safe(csv_path)
+
+        assert table.rows[0][3] == ""
+
+    def test_missing_text_header(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "timeline_registry.csv"
+        headers = ["Time", "Type", "Action", "PID", "Value32", "Value64", "Pad"]
+        rows = [["2024-01-15 08:00:00", "REG", "Write", "1234", "0", "0", ""]]
+        _write_csv(csv_path, headers, rows)
+
+        row_count = enrich_timeline_registry_csv(csv_path)
+        table = read_csv_safe(csv_path)
+
+        assert row_count == 1
+        assert table.headers == list(TIMELINE_REGISTRY_OUTPUT_HEADERS)
+        assert table.rows[0][3] == ""
+
+    def test_row_count_preserved(
+        self, tmp_path: Path, sample_rows: list[list[str]]
+    ) -> None:
+        csv_path = tmp_path / "timeline_registry.csv"
+        _write_csv(csv_path, GENERIC_HEADERS, sample_rows)
+
+        row_count = enrich_timeline_registry_csv(csv_path)
+        table = read_csv_safe(csv_path)
+
+        assert row_count == len(sample_rows)
+        assert table.row_count == len(sample_rows)
+
+    def test_no_duplicate_columns(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "timeline_registry.csv"
+        _write_csv(csv_path, GENERIC_HEADERS, [_sample_row(NORMAL_PATH)])
+
+        enrich_timeline_registry_csv(csv_path)
+        table = read_csv_safe(csv_path)
+
+        assert len(table.headers) == len(set(table.headers))
+
+    def test_idempotent_when_already_enriched(
+        self, tmp_path: Path, sample_rows: list[list[str]]
+    ) -> None:
+        csv_path = tmp_path / "timeline_registry.csv"
+        _write_csv(csv_path, GENERIC_HEADERS, sample_rows)
+        enrich_timeline_registry_csv(csv_path)
+        first = read_csv_safe(csv_path)
+
+        enrich_timeline_registry_csv(csv_path)
+        second = read_csv_safe(csv_path)
+
+        assert first.headers == second.headers
+        assert first.rows == second.rows
+
+
+class TestCSharpAliasParity:
+    def test_legacy_and_semantic_rows_map_equivalent_text(self) -> None:
+        generic = _row_dict(GENERIC_HEADERS, _sample_row(PATH_WITH_COMMA))
+        semantic = _row_dict(
+            list(TIMELINE_REGISTRY_OUTPUT_HEADERS),
+            _semantic_row(PATH_WITH_COMMA),
+        )
+
+        generic_mapped = _map_timeline_registry(generic)
+        semantic_mapped = _map_timeline_registry(semantic)
+
+        assert generic_mapped["Text"] == semantic_mapped["Text"] == PATH_WITH_COMMA
+        assert generic_mapped["Time"] == semantic_mapped["Time"]
+        assert generic_mapped["Type"] == semantic_mapped["Type"]
+        assert generic_mapped["Action"] == semantic_mapped["Action"]
+        assert generic_mapped["Pad"] == semantic_mapped["Pad"]
+
+    def test_legacy_and_semantic_rows_hash_identically(self) -> None:
+        generic = _row_dict(GENERIC_HEADERS, _sample_row(PATH_WITH_COMMA))
+        semantic = _row_dict(
+            list(TIMELINE_REGISTRY_OUTPUT_HEADERS),
+            _semantic_row(PATH_WITH_COMMA),
+        )
+
+        assert _build_timeline_registry_event_row(generic) == _build_timeline_registry_event_row(
+            semantic
+        )
+
+
+class TestTimelinesExtractorIntegration:
+    def test_extract_enriches_timeline_registry_and_process(
+        self, tmp_path: Path
+    ) -> None:
+        from extractors.timelines import TimelinesExtractor
+
+        memprocfs_root = tmp_path / "memprocfs"
+        forensic_csv = memprocfs_root / "forensic" / "csv"
+
+        process_text = (
+            r"powershell.exe [user3] \Device\HarddiskVolume3\Windows\System32"
+            r"\WindowsPowerShell\v1.0\powershell.exe"
+        )
+        registry_source = forensic_csv / "timeline_registry.csv"
+        process_source = forensic_csv / "timeline_process.csv"
+        web_source = forensic_csv / "timeline_web.csv"
+        all_source = forensic_csv / "timeline_all.csv"
+
+        _write_csv(
+            registry_source,
+            GENERIC_HEADERS,
+            [_sample_row(NORMAL_PATH)],
+        )
+        _write_csv(
+            process_source,
+            list(TIMELINE_PROCESS_GENERIC_HEADERS),
+            [
+                [
+                    "2024-01-15 08:00:00",
+                    "PROC",
+                    "Create",
+                    "1234",
+                    "0",
+                    "0",
+                    process_text,
+                    "",
+                ],
+            ],
+        )
+        _write_csv(
+            web_source,
+            GENERIC_HEADERS,
+            [_sample_row(r"\Software\Should\Not\Change")],
+        )
+        _write_csv(all_source, ["time"], [["2026-01-01"]])
+
+        registry_bytes = registry_source.read_bytes()
+        process_bytes = process_source.read_bytes()
+        web_bytes = web_source.read_bytes()
+        all_bytes = all_source.read_bytes()
+
+        out_dir = tmp_path / "case" / "csv"
+        out_dir.mkdir(parents=True)
+        result = TimelinesExtractor().extract(memprocfs_root, out_dir)
+
+        assert result.ok is True
+        assert "timeline_registry.csv" in result.files_written
+        assert "timeline_process.csv" in result.files_written
+
+        registry = read_csv_safe(out_dir / "timeline_registry.csv")
+        assert registry.headers == list(TIMELINE_REGISTRY_OUTPUT_HEADERS)
+        assert registry.rows[0][3] == NORMAL_PATH
+
+        process = read_csv_safe(out_dir / "timeline_process.csv")
+        assert process.headers == list(TIMELINE_PROCESS_OUTPUT_HEADERS)
+        assert process.rows[0][8:] == [
+            "powershell.exe",
+            "user3",
+            (
+                r"\Device\HarddiskVolume3\Windows\System32\WindowsPowerShell\v1.0"
+                r"\powershell.exe"
+            ),
+        ]
+
+        web = read_csv_safe(out_dir / "timeline_web.csv")
+        assert web.headers == GENERIC_HEADERS
+        assert web.rows[0][6] == r"\Software\Should\Not\Change"
+        assert len(web.headers) == 8
+
+        timeline_all = read_csv_safe(out_dir / "timeline_all.csv")
+        assert timeline_all.headers == ["time"]
+        assert timeline_all.rows == [["2026-01-01"]]
+
+        assert registry_source.read_bytes() == registry_bytes
+        assert process_source.read_bytes() == process_bytes
+        assert web_source.read_bytes() == web_bytes
+        assert all_source.read_bytes() == all_bytes
+
+    def test_registry_enrichment_skipped_when_result_not_ok(
+        self, tmp_path: Path
+    ) -> None:
+        from extractors.base import ExtractResult
+        from extractors.timelines import TimelinesExtractor
+
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        registry_path = out_dir / "timeline_registry.csv"
+        _write_csv(registry_path, GENERIC_HEADERS, [_sample_row(NORMAL_PATH)])
+
+        extractor = TimelinesExtractor()
+        result = ExtractResult(ok=False, error="copy failed")
+
+        with patch.object(
+            extractor,
+            "copy_forensic_csvs_matching",
+            return_value=result,
+        ):
+            returned = extractor.extract(tmp_path / "memprocfs", out_dir)
+
+        assert returned.ok is False
+        table = read_csv_safe(registry_path)
+        assert table.headers == GENERIC_HEADERS
+        assert "RegistryPath" not in table.headers
+
+    def test_registry_enrichment_skipped_when_absent_from_files_written(
+        self, tmp_path: Path
+    ) -> None:
+        from extractors.base import ExtractResult
+        from extractors.timelines import TimelinesExtractor
+
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        registry_path = out_dir / "timeline_registry.csv"
+        _write_csv(registry_path, GENERIC_HEADERS, [_sample_row(NORMAL_PATH)])
+
+        extractor = TimelinesExtractor()
+        result = ExtractResult(
+            ok=True,
+            rows=0,
+            files_written=["timeline_all.csv"],
+        )
+
+        with patch.object(
+            extractor,
+            "copy_forensic_csvs_matching",
+            return_value=result,
+        ):
+            extractor.extract(tmp_path / "memprocfs", out_dir)
+
+        table = read_csv_safe(registry_path)
+        assert table.headers == GENERIC_HEADERS
+        assert "RegistryPath" not in table.headers
