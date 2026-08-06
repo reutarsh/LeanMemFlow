@@ -1,0 +1,31 @@
+---
+description: Use and maintain REPOSITORY_TREE.txt for code navigation
+alwaysApply: true
+---
+
+# Repository tree navigation
+
+## Source of truth
+
+- The canonical layout is `REPOSITORY_TREE.txt` at the repository root.
+- **Before** using Glob, Grep, or broad directory scans to locate code, read `REPOSITORY_TREE.txt` and pick the exact path from there.
+- Use targeted Read/Grep only after the tree tells you where to look.
+
+## Keep it current
+
+After **any** code change that adds, removes, or renames files or directories:
+
+1. Run: `python tools/update_repository_tree.py`
+2. Confirm `REPOSITORY_TREE.txt` reflects the change before finishing the task.
+
+Do this in the same turn as the code change — do not leave the tree stale.
+
+## Regeneration
+
+- Script: `tools/update_repository_tree.py`
+- Output: `REPOSITORY_TREE.txt` (sizes, repo-relative paths, extension summary)
+- Excludes build/cache dirs (`.git`, `obj`, `bin`, `__pycache__`, etc.) — source and project files only.
+
+## When the tree is insufficient
+
+If a path is missing or looks wrong, regenerate first. Only fall back to Glob/Grep when the tree is up to date and still does not contain what you need.

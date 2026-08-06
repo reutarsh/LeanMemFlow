@@ -1,0 +1,12 @@
+---
+description: Keep assistant replies short and focused
+alwaysApply: true
+---
+
+# Concise responses
+
+- Default to short, focused answers. Lead with the direct answer or outcome.
+- Skip preamble, recap, and filler unless the user asks for more context.
+- Use bullets only when they improve scanability; avoid long nested lists.
+- Match depth to the task: one-line fixes get one-line replies; complex work gets structured but still tight prose.
+- Do not pad with optional follow-ups at the end unless something is genuinely blocked.

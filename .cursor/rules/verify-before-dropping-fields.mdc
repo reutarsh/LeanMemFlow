@@ -1,0 +1,31 @@
+---
+description: Verify MemProcFS docs before dropping CSV fields
+alwaysApply: true
+---
+
+# Verify before removing MemProcFS fields
+
+Before dropping or omitting any column from extractor output (especially `timeline_*` and other forensic CSVs):
+
+## Required double-check
+
+1. **Consult MemProcFS documentation** (Wiki and/or upstream source for that CSV/module) for what each field means and whether MemProcFS populates it for that table.
+2. **Confirm the field is not set** for that artifact type — i.e. MemProcFS never writes a meaningful value there, so the column is always empty (or always a known unused placeholder such as `0` / blank).
+3. **Do not drop** a field based only on one sample dump, local heuristics, or “looks empty in this case.”
+
+## Evidence bar
+
+- Prefer primary sources: MemProcFS GitHub Wiki, module docs, or the C source that emits the CSV row.
+- If docs are silent, check the emitter code path for that timeline/table type.
+- If still unclear, **keep the column** (rename if misleading) rather than remove it.
+
+## When documenting a drop
+
+In code comments or the PR/summary, briefly note:
+- which MemProcFS field was dropped, and
+- why it is never populated for that table (cite doc/source).
+
+## Renames vs drops
+
+- **Rename** when the field is populated but the MemProcFS name is misleading.
+- **Drop** only after the double-check above proves it is never set for that table.
