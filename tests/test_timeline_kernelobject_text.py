@@ -1,4 +1,4 @@
-"""Tests for timeline_kernelobject Text alias enrichment and extraction integration."""
+"""Tests for timeline_kernelobject semantic schema enrichment and extraction integration."""
 
 from __future__ import annotations
 
@@ -9,12 +9,13 @@ from unittest.mock import patch
 import pytest
 
 from extractors.timeline_kernelobject_text import (
+    TIMELINE_KERNELOBJECT_GENERIC_HEADERS,
     TIMELINE_KERNELOBJECT_OUTPUT_HEADERS,
     enrich_timeline_kernelobject_csv,
 )
 from memflow_common.csv_io import read_csv_safe
 
-NATIVE_HEADERS = list(TIMELINE_KERNELOBJECT_OUTPUT_HEADERS[:8])
+GENERIC_HEADERS = list(TIMELINE_KERNELOBJECT_GENERIC_HEADERS)
 
 LOW_MEMORY_PATH = r"\KernelObjects\LowMemoryCondition"
 DEVICE_PATH = r"\Device\LanmanRedirector"
@@ -28,6 +29,8 @@ PATH_WITH_BRACKETS = r"\Device\foo[1]\bar"
 PATH_WITH_GUID = r"\Device\{01234567-89ab-cdef-0123-456789abcdef}"
 PATH_WITH_HASH = r"\Device\Harddisk#0"
 PATH_WITH_UNICODE = r"\KernelObjects\עברית"
+OBJECT_ADDRESS = "0xFFFFFA8012345678"
+TIME = "2024-01-15 08:00:00"
 
 
 def _write_csv(path: Path, headers: list[str], rows: list[list[str]]) -> None:
@@ -42,11 +45,20 @@ def _sample_row(
     text: str,
     *,
     pid: str = "0",
-    value32: str = "0x0",
-    value64: str = "0xFFFFFA8012345678",
-    time: str = "2024-01-15 08:00:00",
+    value32: str = "0",
+    value64: str = OBJECT_ADDRESS,
+    time: str = TIME,
 ) -> list[str]:
     return [time, "KObj", "CRE", pid, value32, value64, text, ""]
+
+
+def _expected_row(
+    path: str,
+    *,
+    object_address: str = OBJECT_ADDRESS,
+    time: str = TIME,
+) -> list[str]:
+    return [time, "KObj", "CRE", object_address, path]
 
 
 class TestEnrichTimelineKernelObjectCsv:
@@ -58,190 +70,88 @@ class TestEnrichTimelineKernelObjectCsv:
             _sample_row(""),
         ]
 
-    def test_normal_kernel_object_path(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize(
+        "path",
+        [
+            LOW_MEMORY_PATH,
+            DEVICE_PATH,
+            GLOBAL_PATH,
+            ARCNAME_PATH,
+            PATH_WITH_SPACES,
+            PATH_WITH_COMMA,
+            PATH_WITH_PIPE,
+            PATH_WITH_AT,
+            PATH_WITH_BRACKETS,
+            PATH_WITH_GUID,
+            PATH_WITH_HASH,
+            PATH_WITH_UNICODE,
+            "",
+        ],
+    )
+    def test_path_and_address_preserved(self, tmp_path: Path, path: str) -> None:
         csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(LOW_MEMORY_PATH)])
+        _write_csv(csv_path, GENERIC_HEADERS, [_sample_row(path)])
 
         enrich_timeline_kernelobject_csv(csv_path)
         table = read_csv_safe(csv_path)
 
-        assert table.rows[0][6] == LOW_MEMORY_PATH
-        assert table.rows[0][8] == LOW_MEMORY_PATH
+        assert table.headers == list(TIMELINE_KERNELOBJECT_OUTPUT_HEADERS)
+        assert table.rows[0] == _expected_row(path)
 
-    def test_device_path(self, tmp_path: Path) -> None:
+    def test_drops_pid_value32_text_pad(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(DEVICE_PATH)])
+        _write_csv(csv_path, GENERIC_HEADERS, [_sample_row(LOW_MEMORY_PATH)])
 
         enrich_timeline_kernelobject_csv(csv_path)
         table = read_csv_safe(csv_path)
 
-        assert table.rows[0][6] == DEVICE_PATH
-        assert table.rows[0][8] == DEVICE_PATH
+        assert "PID" not in table.headers
+        assert "Value32" not in table.headers
+        assert "Value64" not in table.headers
+        assert "Text" not in table.headers
+        assert "Pad" not in table.headers
 
-    def test_global_path(self, tmp_path: Path) -> None:
+    def test_renames_value64_and_text(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(GLOBAL_PATH)])
+        _write_csv(csv_path, GENERIC_HEADERS, [_sample_row(DEVICE_PATH)])
 
         enrich_timeline_kernelobject_csv(csv_path)
         table = read_csv_safe(csv_path)
 
-        assert table.rows[0][6] == GLOBAL_PATH
-        assert table.rows[0][8] == GLOBAL_PATH
+        assert table.rows[0][3] == OBJECT_ADDRESS
+        assert table.rows[0][4] == DEVICE_PATH
 
-    def test_arcname_path(self, tmp_path: Path) -> None:
-        csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(ARCNAME_PATH)])
-
-        enrich_timeline_kernelobject_csv(csv_path)
-        table = read_csv_safe(csv_path)
-
-        assert table.rows[0][6] == ARCNAME_PATH
-        assert table.rows[0][8] == ARCNAME_PATH
-
-    def test_path_with_spaces(self, tmp_path: Path) -> None:
-        csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(PATH_WITH_SPACES)])
-
-        enrich_timeline_kernelobject_csv(csv_path)
-        table = read_csv_safe(csv_path)
-
-        assert table.rows[0][6] == PATH_WITH_SPACES
-        assert table.rows[0][8] == PATH_WITH_SPACES
-
-    def test_path_with_comma(self, tmp_path: Path) -> None:
-        csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(PATH_WITH_COMMA)])
-
-        enrich_timeline_kernelobject_csv(csv_path)
-        table = read_csv_safe(csv_path)
-
-        assert table.rows[0][6] == PATH_WITH_COMMA
-        assert table.rows[0][8] == PATH_WITH_COMMA
-
-    def test_path_with_pipe(self, tmp_path: Path) -> None:
-        csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(PATH_WITH_PIPE)])
-
-        enrich_timeline_kernelobject_csv(csv_path)
-        table = read_csv_safe(csv_path)
-
-        assert table.rows[0][6] == PATH_WITH_PIPE
-        assert table.rows[0][8] == PATH_WITH_PIPE
-
-    def test_path_with_at(self, tmp_path: Path) -> None:
-        csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(PATH_WITH_AT)])
-
-        enrich_timeline_kernelobject_csv(csv_path)
-        table = read_csv_safe(csv_path)
-
-        assert table.rows[0][6] == PATH_WITH_AT
-        assert table.rows[0][8] == PATH_WITH_AT
-
-    def test_path_with_brackets(self, tmp_path: Path) -> None:
-        csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(PATH_WITH_BRACKETS)])
-
-        enrich_timeline_kernelobject_csv(csv_path)
-        table = read_csv_safe(csv_path)
-
-        assert table.rows[0][6] == PATH_WITH_BRACKETS
-        assert table.rows[0][8] == PATH_WITH_BRACKETS
-
-    def test_path_with_guid(self, tmp_path: Path) -> None:
-        csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(PATH_WITH_GUID)])
-
-        enrich_timeline_kernelobject_csv(csv_path)
-        table = read_csv_safe(csv_path)
-
-        assert table.rows[0][6] == PATH_WITH_GUID
-        assert table.rows[0][8] == PATH_WITH_GUID
-
-    def test_path_with_hash(self, tmp_path: Path) -> None:
-        csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(PATH_WITH_HASH)])
-
-        enrich_timeline_kernelobject_csv(csv_path)
-        table = read_csv_safe(csv_path)
-
-        assert table.rows[0][6] == PATH_WITH_HASH
-        assert table.rows[0][8] == PATH_WITH_HASH
-
-    def test_path_with_unicode(self, tmp_path: Path) -> None:
-        csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row(PATH_WITH_UNICODE)])
-
-        enrich_timeline_kernelobject_csv(csv_path)
-        table = read_csv_safe(csv_path)
-
-        assert table.rows[0][6] == PATH_WITH_UNICODE
-        assert table.rows[0][8] == PATH_WITH_UNICODE
-
-    def test_empty_text(self, tmp_path: Path) -> None:
-        csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, [_sample_row("")])
-
-        enrich_timeline_kernelobject_csv(csv_path)
-        table = read_csv_safe(csv_path)
-
-        assert table.rows[0][6] == ""
-        assert table.rows[0][8] == ""
-
-    def test_missing_text_header(self, tmp_path: Path) -> None:
+    def test_missing_text_header_yields_empty_path(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_kernelobject.csv"
         headers = ["Time", "Type", "Action", "PID", "Value32", "Value64", "Pad"]
-        rows = [
-            [
-                "2024-01-15 08:00:00",
-                "KObj",
-                "CRE",
-                "0",
-                "0x0",
-                "0xFFFFFA8012345678",
-                "",
-            ],
-        ]
+        rows = [[TIME, "KObj", "CRE", "0", "0", OBJECT_ADDRESS, ""]]
         _write_csv(csv_path, headers, rows)
 
         row_count = enrich_timeline_kernelobject_csv(csv_path)
         table = read_csv_safe(csv_path)
 
         assert row_count == 1
-        assert table.headers == headers + ["KernelObjectPath"]
-        assert table.rows[0][:-1] == rows[0]
-        assert table.rows[0][-1] == ""
+        assert table.headers == list(TIMELINE_KERNELOBJECT_OUTPUT_HEADERS)
+        assert table.rows[0] == _expected_row("")
 
-    def test_native_columns_preserved(
-        self, tmp_path: Path, sample_rows: list[list[str]]
-    ) -> None:
+    def test_legacy_appended_kernel_object_path_column(self, tmp_path: Path) -> None:
+        """Older enricher kept generics and appended KernelObjectPath."""
         csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, sample_rows)
+        headers = GENERIC_HEADERS + ["KernelObjectPath"]
+        rows = [_sample_row(LOW_MEMORY_PATH) + [LOW_MEMORY_PATH]]
+        _write_csv(csv_path, headers, rows)
 
         enrich_timeline_kernelobject_csv(csv_path)
         table = read_csv_safe(csv_path)
 
-        for src_row, out_row in zip(sample_rows, table.rows):
-            assert out_row[:8] == src_row
-            assert out_row[3] == "0"
-            assert out_row[4] == "0x0"
-            assert out_row[5] == "0xFFFFFA8012345678"
+        assert table.headers == list(TIMELINE_KERNELOBJECT_OUTPUT_HEADERS)
+        assert table.rows[0] == _expected_row(LOW_MEMORY_PATH)
 
-    def test_kernel_object_path_equals_text(
+    def test_header_order(
         self, tmp_path: Path, sample_rows: list[list[str]]
     ) -> None:
         csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, sample_rows)
-
-        enrich_timeline_kernelobject_csv(csv_path)
-        table = read_csv_safe(csv_path)
-
-        for row in table.rows:
-            assert row[8] == row[6]
-
-    def test_header_order(self, tmp_path: Path, sample_rows: list[list[str]]) -> None:
-        csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, sample_rows)
+        _write_csv(csv_path, GENERIC_HEADERS, sample_rows)
 
         enrich_timeline_kernelobject_csv(csv_path)
         table = read_csv_safe(csv_path)
@@ -252,19 +162,24 @@ class TestEnrichTimelineKernelObjectCsv:
         self, tmp_path: Path, sample_rows: list[list[str]]
     ) -> None:
         csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, sample_rows)
+        _write_csv(csv_path, GENERIC_HEADERS, sample_rows)
 
         row_count = enrich_timeline_kernelobject_csv(csv_path)
         table = read_csv_safe(csv_path)
 
         assert row_count == len(sample_rows)
         assert table.row_count == len(sample_rows)
+        assert table.rows == [
+            _expected_row(LOW_MEMORY_PATH),
+            _expected_row(PATH_WITH_SPACES),
+            _expected_row(""),
+        ]
 
     def test_idempotent_when_already_enriched(
         self, tmp_path: Path, sample_rows: list[list[str]]
     ) -> None:
         csv_path = tmp_path / "timeline_kernelobject.csv"
-        _write_csv(csv_path, NATIVE_HEADERS, sample_rows)
+        _write_csv(csv_path, GENERIC_HEADERS, sample_rows)
         enrich_timeline_kernelobject_csv(csv_path)
         first = read_csv_safe(csv_path)
 
@@ -276,9 +191,7 @@ class TestEnrichTimelineKernelObjectCsv:
 
 
 class TestTimelinesExtractorIntegration:
-    def test_extract_enriches_timeline_kernelobject(
-        self, tmp_path: Path
-    ) -> None:
+    def test_extract_enriches_timeline_kernelobject(self, tmp_path: Path) -> None:
         from extractors.timelines import TimelinesExtractor
 
         memprocfs_root = tmp_path / "memprocfs"
@@ -290,12 +203,12 @@ class TestTimelinesExtractorIntegration:
 
         _write_csv(
             kernelobject_source,
-            NATIVE_HEADERS,
+            GENERIC_HEADERS,
             [_sample_row(LOW_MEMORY_PATH)],
         )
         _write_csv(
             web_source,
-            NATIVE_HEADERS,
+            GENERIC_HEADERS,
             [_sample_row(r"\KernelObjects\Should\Not\Change")],
         )
         _write_csv(all_source, ["time"], [["2026-01-01"]])
@@ -313,12 +226,10 @@ class TestTimelinesExtractorIntegration:
 
         kernelobject = read_csv_safe(out_dir / "timeline_kernelobject.csv")
         assert kernelobject.headers == list(TIMELINE_KERNELOBJECT_OUTPUT_HEADERS)
-        assert kernelobject.rows[0][6] == LOW_MEMORY_PATH
-        assert kernelobject.rows[0][8] == LOW_MEMORY_PATH
-        assert kernelobject.rows[0][8] == kernelobject.rows[0][6]
+        assert kernelobject.rows[0] == _expected_row(LOW_MEMORY_PATH)
 
         web = read_csv_safe(out_dir / "timeline_web.csv")
-        assert web.headers == NATIVE_HEADERS
+        assert web.headers == GENERIC_HEADERS
         assert web.rows[0][6] == r"\KernelObjects\Should\Not\Change"
         assert len(web.headers) == 8
 
@@ -339,7 +250,7 @@ class TestTimelinesExtractorIntegration:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         kernelobject_path = out_dir / "timeline_kernelobject.csv"
-        _write_csv(kernelobject_path, NATIVE_HEADERS, [_sample_row(LOW_MEMORY_PATH)])
+        _write_csv(kernelobject_path, GENERIC_HEADERS, [_sample_row(LOW_MEMORY_PATH)])
 
         extractor = TimelinesExtractor()
         result = ExtractResult(ok=False, error="copy failed")
@@ -353,8 +264,8 @@ class TestTimelinesExtractorIntegration:
 
         assert returned.ok is False
         table = read_csv_safe(kernelobject_path)
-        assert table.headers == NATIVE_HEADERS
-        assert "KernelObjectPath" not in table.headers
+        assert table.headers == GENERIC_HEADERS
+        assert "ObjectAddress" not in table.headers
 
     def test_kernelobject_enrichment_skipped_when_file_not_written(
         self, tmp_path: Path
@@ -365,7 +276,7 @@ class TestTimelinesExtractorIntegration:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         kernelobject_path = out_dir / "timeline_kernelobject.csv"
-        _write_csv(kernelobject_path, NATIVE_HEADERS, [_sample_row(LOW_MEMORY_PATH)])
+        _write_csv(kernelobject_path, GENERIC_HEADERS, [_sample_row(LOW_MEMORY_PATH)])
 
         extractor = TimelinesExtractor()
         result = ExtractResult(ok=True, files_written=["timeline_all.csv"])
@@ -378,5 +289,5 @@ class TestTimelinesExtractorIntegration:
             extractor.extract(tmp_path / "memprocfs", out_dir)
 
         table = read_csv_safe(kernelobject_path)
-        assert table.headers == NATIVE_HEADERS
+        assert table.headers == GENERIC_HEADERS
         assert "KernelObjectPath" not in table.headers

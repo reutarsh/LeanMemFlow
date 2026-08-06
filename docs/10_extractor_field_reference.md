@@ -353,7 +353,17 @@ MemProcFS generates a family of timeline CSVs, each correlating events from a di
 | `timeline_prefetch.csv` | Prefetch execution evidence |
 | `timeline_net.csv` | Network connection events |
 | `timeline_task.csv` | Scheduled task execution events |
-| `timeline_kernelobject.csv` | Kernel object create/destroy |
+| `timeline_kernelobject.csv` | Kernel object manager objects |
+
+**Kernel object case-output headers:** After extraction enrichment, the case copy of `timeline_kernelobject.csv` uses semantic names. MemProcFS source keeps the original headers. Verified against MemProcFS wiki (KObj: NUM unused, HEX = object address) and `m_sys_obj.c` `MSysObj_Timeline` (`dwPID=0`, `dwData32=0`, `qwData64=va`, `uszText=path`).
+
+| Case column | MemProcFS source | Description |
+|-------------|------------------|-------------|
+| `ObjectAddress` | `Value64` | Kernel object virtual address |
+| `KernelObjectPath` | `Text` | Full object manager path |
+
+Dropped (always unset for KObj): `PID`, `Value32`, `Pad`.
+
 | `timeline_web.csv` | Browser history artefacts |
 
 **Common fields across all timeline files:**
