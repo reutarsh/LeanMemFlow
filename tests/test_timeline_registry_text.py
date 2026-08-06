@@ -60,7 +60,6 @@ def _semantic_row(registry_path: str = NORMAL_PATH) -> list[str]:
         "REG",
         "Write",
         registry_path,
-        "",
     ]
 
 
@@ -87,7 +86,7 @@ def _map_timeline_registry(row: dict[str, str]) -> dict[str, str]:
         "Value32": _truncate(_cell(row, "Value32"), 100),
         "Value64": _truncate(_cell(row, "Value64"), 100),
         "Text": _cell(row, "RegistryPath", "Text"),
-        "Pad": _truncate(_cell(row, "Pad"), 100),
+        "Pad": "",
     }
 
 
@@ -108,7 +107,7 @@ def _build_timeline_registry_event_row(row: dict[str, str]) -> str:
         "",
         "",
         _get_row_value(row, "RegistryPath", "Text"),
-        _get_row_value(row, "Pad"),
+        "",
     ]
     joined = "||".join(values)
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
@@ -147,6 +146,7 @@ class TestEnrichTimelineRegistryCsv:
         assert "Value32" not in table.headers
         assert "Value64" not in table.headers
         assert "Text" not in table.headers
+        assert "Pad" not in table.headers
 
     def test_registry_path_equals_original_text(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_registry.csv"
@@ -330,7 +330,7 @@ class TestTimelinesExtractorIntegration:
 
         process = read_csv_safe(out_dir / "timeline_process.csv")
         assert process.headers == list(TIMELINE_PROCESS_OUTPUT_HEADERS)
-        assert process.rows[0][8:] == [
+        assert process.rows[0][6:9] == [
             "powershell.exe",
             "user3",
             (
@@ -338,6 +338,7 @@ class TestTimelinesExtractorIntegration:
                 r"\powershell.exe"
             ),
         ]
+        assert process.rows[0][-1].startswith("powershell.exe [user3]")
 
         web = read_csv_safe(out_dir / "timeline_web.csv")
         assert web.headers == list(TIMELINE_WEB_OUTPUT_HEADERS)

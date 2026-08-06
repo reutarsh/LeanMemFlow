@@ -1,4 +1,8 @@
-"""Transform MemProcFS timeline_registry.csv into semantic case-output schema."""
+"""Transform MemProcFS timeline_registry.csv into semantic case-output schema.
+
+Pad is unused CSV line padding from MemProcFS m_fc_csv.c
+(M_FcCSV_ReadTimeline2 writes Pad as fixed-width spaces via "%*s" with "").
+"""
 
 from __future__ import annotations
 
@@ -23,7 +27,7 @@ TIMELINE_REGISTRY_GENERIC_HEADERS: tuple[str, ...] = (
 )
 
 DROPPED_GENERIC_HEADERS: frozenset[str] = frozenset(
-    {"PID", "Value32", "Value64", "Text"}
+    {"PID", "Value32", "Value64", "Text", "Pad"}
 )
 
 TIMELINE_REGISTRY_OUTPUT_HEADERS: tuple[str, ...] = (
@@ -31,7 +35,6 @@ TIMELINE_REGISTRY_OUTPUT_HEADERS: tuple[str, ...] = (
     "Type",
     "Action",
     "RegistryPath",
-    "Pad",
 )
 
 # Backward compatibility for callers that referenced native MemProcFS headers.
@@ -82,6 +85,14 @@ def _warn_unexpected_generic_values(
             )
 
 
+def _cell(header_index: dict[str, int], row: list[str], *names: str) -> str:
+    for name in names:
+        idx = header_index.get(name)
+        if idx is not None and idx < len(row):
+            return row[idx]
+    return ""
+
+
 def enrich_timeline_registry_csv(csv_path: Path) -> int:
     """Read case timeline_registry.csv, emit semantic columns, rewrite in place.
 
@@ -97,26 +108,16 @@ def enrich_timeline_registry_csv(csv_path: Path) -> int:
         return table.row_count
 
     header_index = {header: idx for idx, header in enumerate(table.headers)}
-    text_idx = header_index.get("Text")
-    registry_path_idx = header_index.get("RegistryPath")
     output_rows: list[list[str]] = []
 
     for row_idx, row in enumerate(table.rows):
         _warn_unexpected_generic_values(row_idx, table.headers, row)
-
-        registry_path = ""
-        if text_idx is not None and text_idx < len(row):
-            registry_path = row[text_idx]
-        elif registry_path_idx is not None and registry_path_idx < len(row):
-            registry_path = row[registry_path_idx]
-
         output_rows.append(
             [
-                row[header_index["Time"]] if "Time" in header_index and header_index["Time"] < len(row) else "",
-                row[header_index["Type"]] if "Type" in header_index and header_index["Type"] < len(row) else "",
-                row[header_index["Action"]] if "Action" in header_index and header_index["Action"] < len(row) else "",
-                registry_path,
-                row[header_index["Pad"]] if "Pad" in header_index and header_index["Pad"] < len(row) else "",
+                _cell(header_index, row, "Time"),
+                _cell(header_index, row, "Type"),
+                _cell(header_index, row, "Action"),
+                _cell(header_index, row, "RegistryPath", "Text"),
             ]
         )
 

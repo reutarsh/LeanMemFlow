@@ -105,7 +105,7 @@ def _truncate(value: str, max_len: int) -> str:
 
 def _map_timeline_net(row: dict[str, str]) -> dict[str, str]:
     """Mirror C# MapTimelineNet field resolution."""
-    text = _cell(row, "Text")
+    text = _cell(row, "ConnectionDescription", "Text")
     protocol = _cell(row, "Protocol")
     state = _cell(row, "State")
     source_address = _cell(row, "SourceAddress")
@@ -132,7 +132,7 @@ def _map_timeline_net(row: dict[str, str]) -> dict[str, str]:
         "SourcePort": _truncate(source_port, 100),
         "DestinationAddress": _truncate(destination_address, 100),
         "DestinationPort": _truncate(destination_port, 100),
-        "Text": text,
+        "ConnectionDescription": text,
     }
 
 
@@ -145,7 +145,7 @@ def _get_row_value(row: dict[str, str], *keys: str) -> str:
 
 def _build_timeline_net_event_row(row: dict[str, str]) -> str:
     """Mirror C# RowHashBuilder.BuildTimelineNetEventRow."""
-    text = _get_row_value(row, "Text")
+    text = _get_row_value(row, "ConnectionDescription", "Text")
     protocol = _get_row_value(row, "Protocol")
     state = _get_row_value(row, "State")
     source_address = _get_row_value(row, "SourceAddress")
@@ -341,7 +341,7 @@ class TestEnrichTimelineNetCsv:
         table = read_csv_safe(csv_path)
 
         assert table.headers == list(TIMELINE_NET_OUTPUT_HEADERS)
-        assert table.headers[-1] == "Text"
+        assert table.headers[-1] == "ConnectionDescription"
 
     def test_value32_and_pad_removed(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_net.csv"
@@ -525,7 +525,11 @@ class TestCSharpAliasParity:
         assert generic_mapped["ConnectionTime"] == semantic_mapped["ConnectionTime"]
         assert generic_mapped["KernelObjectAddress"] == semantic_mapped["KernelObjectAddress"]
         assert generic_mapped["Protocol"] == semantic_mapped["Protocol"] == "TCPv4"
-        assert generic_mapped["Text"] == semantic_mapped["Text"] == TCPV4_ESTABLISHED_TEXT
+        assert (
+            generic_mapped["ConnectionDescription"]
+            == semantic_mapped["ConnectionDescription"]
+            == TCPV4_ESTABLISHED_TEXT
+        )
 
     def test_generic_and_semantic_rows_hash_identically(self) -> None:
         generic = _row_dict(GENERIC_HEADERS, _sample_row(TCPV4_ESTABLISHED_TEXT))
@@ -632,7 +636,7 @@ class TestTimelinesExtractorIntegration:
 
         net = read_csv_safe(out_dir / "timeline_net.csv")
         assert net.headers == list(TIMELINE_NET_OUTPUT_HEADERS)
-        assert net.headers[-1] == "Text"
+        assert net.headers[-1] == "ConnectionDescription"
         assert net.rows[0][11] == TCPV4_ESTABLISHED_TEXT
         assert net.rows[0][5:11] == [
             "TCPv4",

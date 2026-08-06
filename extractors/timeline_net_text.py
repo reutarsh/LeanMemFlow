@@ -1,4 +1,8 @@
-﻿"""Transform MemProcFS timeline_net.csv into semantic case-output schema."""
+﻿"""Transform MemProcFS timeline_net.csv into semantic case-output schema.
+
+Pad is unused CSV line padding from MemProcFS m_fc_csv.c
+(M_FcCSV_ReadTimeline2 writes Pad as fixed-width spaces via "%*s" with "").
+"""
 
 from __future__ import annotations
 
@@ -27,9 +31,10 @@ TIMELINE_NET_GENERIC_HEADERS: tuple[str, ...] = (
 GENERIC_TO_SEMANTIC: dict[str, str] = {
     "Time": "ConnectionTime",
     "Value64": "KernelObjectAddress",
+    "Text": "ConnectionDescription",
 }
 
-GENERIC_HEADERS: frozenset[str] = frozenset({"Time", "Value32", "Value64"})
+GENERIC_HEADERS: frozenset[str] = frozenset({"Time", "Value32", "Value64", "Text"})
 
 DROPPED_HEADERS: frozenset[str] = frozenset({"Value32", "Pad"})
 
@@ -49,7 +54,7 @@ TIMELINE_NET_OUTPUT_HEADERS: tuple[str, ...] = (
     "PID",
     "KernelObjectAddress",
     *TIMELINE_NET_DERIVED_COLUMNS,
-    "Text",
+    "ConnectionDescription",
 )
 
 # Backward compatibility for callers that referenced native MemProcFS headers.
@@ -185,7 +190,7 @@ def enrich_timeline_net_csv(csv_path: Path) -> int:
     parse_miss_count = 0
 
     for row in table.rows:
-        text = _get_cell(header_index, row, "Text")
+        text = _get_cell(header_index, row, "ConnectionDescription", "Text")
         protocol, state, src_addr, src_port, dst_addr, dst_port = _parsed_network_fields(
             header_index,
             row,
@@ -213,7 +218,7 @@ def enrich_timeline_net_csv(csv_path: Path) -> int:
 
     if parse_miss_count:
         logger.debug(
-            "timeline_net Text parse miss: %d row(s) in %s",
+            "timeline_net ConnectionDescription parse miss: %d row(s) in %s",
             parse_miss_count,
             csv_path,
         )

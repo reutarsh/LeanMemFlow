@@ -1,4 +1,8 @@
-"""Transform MemProcFS timeline_task.csv into semantic case-output schema."""
+"""Transform MemProcFS timeline_task.csv into semantic case-output schema.
+
+Pad is unused CSV line padding from MemProcFS m_fc_csv.c
+(M_FcCSV_ReadTimeline2 writes Pad as fixed-width spaces via "%*s" with "").
+"""
 
 from __future__ import annotations
 
@@ -24,29 +28,26 @@ TIMELINE_TASK_GENERIC_HEADERS: tuple[str, ...] = (
 )
 
 DROPPED_GENERIC_HEADERS: frozenset[str] = frozenset(
-    {"PID", "Value32", "Value64", "Text"}
+    {"PID", "Value32", "Value64", "Text", "Pad"}
 )
 
-TIMELINE_TASK_OUTPUT_HEADERS: tuple[str, ...] = (
-    "Time",
-    "Type",
-    "Action",
-    "TaskDescription",
-    "Pad",
-    "TaskName",
-    "CommandLine",
-    "Parameters",
-    "User",
-)
-
-# Backward compatibility for callers that referenced native MemProcFS headers.
-TIMELINE_TASK_NATIVE_HEADERS = TIMELINE_TASK_GENERIC_HEADERS
 TIMELINE_TASK_DERIVED_COLUMNS: tuple[str, ...] = (
     "TaskName",
     "CommandLine",
     "Parameters",
     "User",
 )
+
+TIMELINE_TASK_OUTPUT_HEADERS: tuple[str, ...] = (
+    "Time",
+    "Type",
+    "Action",
+    *TIMELINE_TASK_DERIVED_COLUMNS,
+    "TaskDescription",
+)
+
+# Backward compatibility for callers that referenced native MemProcFS headers.
+TIMELINE_TASK_NATIVE_HEADERS = TIMELINE_TASK_GENERIC_HEADERS
 
 _TIMELINE_TASK_TEXT_RE = re.compile(
     r"^(?P<task_name>.*?) - \[(?P<command_line>.*?) :: (?P<parameters>.*)\] \((?P<user>.*)\)$"
@@ -117,6 +118,14 @@ def _warn_unexpected_generic_values(
             )
 
 
+def _cell(header_index: dict[str, int], row: list[str], *names: str) -> str:
+    for name in names:
+        idx = header_index.get(name)
+        if idx is not None and idx < len(row):
+            return row[idx]
+    return ""
+
+
 def enrich_timeline_task_csv(csv_path: Path) -> int:
     """Read case timeline_task.csv, copy Text to TaskDescription, parse, rewrite in place.
 
@@ -132,35 +141,29 @@ def enrich_timeline_task_csv(csv_path: Path) -> int:
         return table.row_count
 
     header_index = {header: idx for idx, header in enumerate(table.headers)}
-    text_idx = header_index.get("Text")
-    task_description_idx = header_index.get("TaskDescription")
     output_rows: list[list[str]] = []
     parse_miss_count = 0
 
     for row_idx, row in enumerate(table.rows):
         _warn_unexpected_generic_values(row_idx, table.headers, row)
 
-        task_description = ""
-        if text_idx is not None and text_idx < len(row):
-            task_description = row[text_idx]
-        elif task_description_idx is not None and task_description_idx < len(row):
-            task_description = row[task_description_idx]
-
-        task_name, command_line, parameters, user = parse_timeline_task_text(task_description)
+        task_description = _cell(header_index, row, "TaskDescription", "Text")
+        task_name, command_line, parameters, user = parse_timeline_task_text(
+            task_description
+        )
         if task_description and not any((task_name, command_line, parameters, user)):
             parse_miss_count += 1
 
         output_rows.append(
             [
-                row[header_index["Time"]] if "Time" in header_index and header_index["Time"] < len(row) else "",
-                row[header_index["Type"]] if "Type" in header_index and header_index["Type"] < len(row) else "",
-                row[header_index["Action"]] if "Action" in header_index and header_index["Action"] < len(row) else "",
-                task_description,
-                row[header_index["Pad"]] if "Pad" in header_index and header_index["Pad"] < len(row) else "",
+                _cell(header_index, row, "Time"),
+                _cell(header_index, row, "Type"),
+                _cell(header_index, row, "Action"),
                 task_name,
                 command_line,
                 parameters,
                 user,
+                task_description,
             ]
         )
 

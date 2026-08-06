@@ -215,8 +215,7 @@ def test_timeline_process_enriched_on_extract(memprocfs_root: Path, tmp_path: Pa
 
     table = read_csv_safe(tmp_path / "timeline_process.csv")
     assert table.headers == list(TIMELINE_PROCESS_OUTPUT_HEADERS)
-    assert table.rows[0][6].startswith("powershell.exe [user3]")
-    assert table.rows[0][8:] == [
+    assert table.rows[0][6:9] == [
         "powershell.exe",
         "user3",
         (
@@ -224,6 +223,7 @@ def test_timeline_process_enriched_on_extract(memprocfs_root: Path, tmp_path: Pa
             r"\powershell.exe"
         ),
     ]
+    assert table.rows[0][-1].startswith("powershell.exe [user3]")
 
     timeline_all = read_csv_safe(tmp_path / "timeline_all.csv")
     assert timeline_all.headers == ["time"]

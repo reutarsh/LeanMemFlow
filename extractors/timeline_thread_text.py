@@ -1,4 +1,8 @@
-"""Transform MemProcFS timeline_thread.csv into semantic case-output schema."""
+"""Transform MemProcFS timeline_thread.csv into semantic case-output schema.
+
+Pad is unused CSV line padding from MemProcFS m_fc_csv.c
+(M_FcCSV_ReadTimeline2 writes Pad as fixed-width spaces via "%*s" with "").
+"""
 
 from __future__ import annotations
 
@@ -18,6 +22,7 @@ GENERIC_TO_SEMANTIC: dict[str, str] = {
 }
 
 GENERIC_HEADERS: frozenset[str] = frozenset(GENERIC_TO_SEMANTIC)
+DROPPED_HEADERS: frozenset[str] = frozenset({"Pad"})
 
 TIMELINE_THREAD_GENERIC_HEADERS: tuple[str, ...] = (
     "Time",
@@ -38,7 +43,6 @@ TIMELINE_THREAD_OUTPUT_HEADERS: tuple[str, ...] = (
     "TID",
     "EThreadAddress",
     "ThreadInfo",
-    "Pad",
 )
 
 # Backward compatibility for callers that referenced native MemProcFS headers.
@@ -62,29 +66,18 @@ def convert_tid_to_decimal(value: str) -> str:
         return value
 
 
-def _semantic_headers_present(headers: list[str]) -> bool:
-    return all(
-        column in headers
-        for column in ("TID", "EThreadAddress", "ThreadInfo")
-    )
-
-
 def _already_enriched(headers: list[str]) -> bool:
-    if any(header in GENERIC_HEADERS for header in headers):
+    if list(headers) != list(TIMELINE_THREAD_OUTPUT_HEADERS):
         return False
-    return _semantic_headers_present(headers)
+    return not any(header in headers for header in GENERIC_HEADERS | DROPPED_HEADERS)
 
 
-def _build_output_headers(headers: list[str]) -> list[str]:
-    renamed = [GENERIC_TO_SEMANTIC.get(header, header) for header in headers]
-
-    if "ThreadInfo" not in renamed and "Text" not in headers:
-        if "Pad" in renamed:
-            renamed.insert(renamed.index("Pad"), "ThreadInfo")
-        else:
-            renamed.append("ThreadInfo")
-
-    return renamed
+def _cell(header_index: dict[str, int], row: list[str], *names: str) -> str:
+    for name in names:
+        idx = header_index.get(name)
+        if idx is not None and idx < len(row):
+            return row[idx]
+    return ""
 
 
 def enrich_timeline_thread_csv(csv_path: Path) -> int:
@@ -101,25 +94,26 @@ def enrich_timeline_thread_csv(csv_path: Path) -> int:
         )
         return table.row_count
 
-    output_headers = _build_output_headers(table.headers)
-    tid_idx = output_headers.index("TID")
+    header_index = {header: idx for idx, header in enumerate(table.headers)}
     output_rows: list[list[str]] = []
 
     for row in table.rows:
-        output_row = [""] * len(output_headers)
-
-        for src_idx, header in enumerate(table.headers):
-            dst_name = GENERIC_TO_SEMANTIC.get(header, header)
-            if dst_name in output_headers:
-                dst_idx = output_headers.index(dst_name)
-                output_row[dst_idx] = row[src_idx] if src_idx < len(row) else ""
-
-        output_row[tid_idx] = convert_tid_to_decimal(output_row[tid_idx])
-        output_rows.append(output_row)
+        tid = convert_tid_to_decimal(_cell(header_index, row, "TID", "Value32"))
+        output_rows.append(
+            [
+                _cell(header_index, row, "Time"),
+                _cell(header_index, row, "Type"),
+                _cell(header_index, row, "Action"),
+                _cell(header_index, row, "PID"),
+                tid,
+                _cell(header_index, row, "EThreadAddress", "Value64"),
+                _cell(header_index, row, "ThreadInfo", "Text"),
+            ]
+        )
 
     enriched = RawTable(
         source_path=csv_path,
-        headers=output_headers,
+        headers=list(TIMELINE_THREAD_OUTPUT_HEADERS),
         rows=output_rows,
         ingest_errors=list(table.ingest_errors),
         sha256=table.sha256,

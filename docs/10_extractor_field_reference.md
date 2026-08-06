@@ -342,6 +342,12 @@ MemProcFS generates a family of timeline CSVs, each correlating events from a di
 | `timeline_thread.csv` | Thread create/exit events |
 | `timeline_ntfs.csv` | NTFS file system timestamps (MFT) |
 
+**Pad column (all timeline CSVs):** MemProcFS header includes `Pad`, but `m_fc_csv.c` `M_FcCSV_ReadTimeline2` always writes it as fixed-width spaces (`"%*s"` with `""`) for line-length alignment — never forensic data. LeanMemFlow drops `Pad` from enriched case outputs where noted below.
+
+**Process case-output headers:** `Time, Type, Action, PID, PPID, EprocessVirtualAddress, ProcessName, Account, KernelPath, ProcessDescription`. `ProcessDescription` is last (raw MemProcFS `Text`). Dropped: `Pad`.
+
+**Thread case-output headers:** `Time, Type, Action, PID, TID, EThreadAddress, ThreadInfo`. Dropped: `Pad`.
+
 **NTFS case-output headers:** After extraction enrichment, the case copy of `timeline_ntfs.csv` replaces generic MemProcFS column names with semantic names. The MemProcFS source file keeps the original headers.
 
 | Case column | MemProcFS source | Description |
@@ -352,7 +358,17 @@ MemProcFS generates a family of timeline CSVs, each correlating events from a di
 
 | `timeline_prefetch.csv` | Prefetch execution evidence |
 | `timeline_net.csv` | Network connection events |
+
+**Net case-output headers:** `ConnectionTime, Type, Action, PID, KernelObjectAddress, Protocol, State, SourceAddress, SourcePort, DestinationAddress, DestinationPort, ConnectionDescription`. `ConnectionDescription` is raw MemProcFS `Text`. Dropped: `Value32`, `Pad`.
+
 | `timeline_task.csv` | Scheduled task execution events |
+
+**Task case-output headers:** `Time, Type, Action, TaskName, CommandLine, Parameters, User, TaskDescription`. `TaskDescription` is last (raw MemProcFS `Text`). Dropped: `PID`, `Value32`, `Value64`, `Pad`.
+
+| `timeline_registry.csv` | Registry timeline events |
+
+**Registry case-output headers:** `Time, Type, Action, RegistryPath`. Dropped: `PID`, `Value32`, `Value64`, `Text`, `Pad`.
+
 | `timeline_kernelobject.csv` | Kernel object manager objects |
 
 **Kernel object case-output headers:** After extraction enrichment, the case copy of `timeline_kernelobject.csv` uses semantic names. MemProcFS source keeps the original headers. Verified against MemProcFS wiki (KObj: NUM unused, HEX = object address) and `m_sys_obj.c` `MSysObj_Timeline` (`dwPID=0`, `dwData32=0`, `qwData64=va`, `uszText=path`).

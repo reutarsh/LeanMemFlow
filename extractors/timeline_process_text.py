@@ -1,4 +1,8 @@
-"""Parse MemProcFS timeline_process Text field and enrich extracted CSV."""
+"""Parse MemProcFS timeline_process Text field and enrich extracted CSV.
+
+Pad is unused CSV line padding from MemProcFS m_fc_csv.c
+(M_FcCSV_ReadTimeline2 writes Pad as fixed-width spaces via "%*s" with "").
+"""
 
 from __future__ import annotations
 
@@ -19,6 +23,7 @@ GENERIC_TO_SEMANTIC: dict[str, str] = {
 }
 
 GENERIC_HEADERS: frozenset[str] = frozenset(GENERIC_TO_SEMANTIC)
+DROPPED_HEADERS: frozenset[str] = frozenset({"Pad"})
 
 TIMELINE_PROCESS_GENERIC_HEADERS: tuple[str, ...] = (
     "Time",
@@ -31,17 +36,6 @@ TIMELINE_PROCESS_GENERIC_HEADERS: tuple[str, ...] = (
     "Pad",
 )
 
-TIMELINE_PROCESS_SEMANTIC_HEADERS: tuple[str, ...] = (
-    "Time",
-    "Type",
-    "Action",
-    "PID",
-    "PPID",
-    "EprocessVirtualAddress",
-    "ProcessDescription",
-    "Pad",
-)
-
 TIMELINE_PROCESS_DERIVED_COLUMNS: tuple[str, ...] = (
     "ProcessName",
     "Account",
@@ -49,12 +43,19 @@ TIMELINE_PROCESS_DERIVED_COLUMNS: tuple[str, ...] = (
 )
 
 TIMELINE_PROCESS_OUTPUT_HEADERS: tuple[str, ...] = (
-    *TIMELINE_PROCESS_SEMANTIC_HEADERS,
+    "Time",
+    "Type",
+    "Action",
+    "PID",
+    "PPID",
+    "EprocessVirtualAddress",
     *TIMELINE_PROCESS_DERIVED_COLUMNS,
+    "ProcessDescription",
 )
 
 # Backward compatibility for callers that referenced native MemProcFS headers.
 TIMELINE_PROCESS_NATIVE_HEADERS = TIMELINE_PROCESS_GENERIC_HEADERS
+TIMELINE_PROCESS_SEMANTIC_HEADERS = TIMELINE_PROCESS_OUTPUT_HEADERS
 
 _TIMELINE_PROCESS_TEXT_RE = re.compile(
     r"^(?P<process_name>.*?) \[(?P<account>[^\]]*)\](?: (?P<kernel_path>.*))?$"
@@ -97,43 +98,22 @@ def parse_timeline_process_text(text: str) -> tuple[str, str, str]:
     )
 
 
-def _derived_columns_present(headers: list[str]) -> bool:
-    return all(col in headers for col in TIMELINE_PROCESS_DERIVED_COLUMNS)
-
-
-def _semantic_headers_present(headers: list[str]) -> bool:
-    return all(
-        col in headers
-        for col in ("PPID", "EprocessVirtualAddress", "ProcessDescription")
-    )
-
-
 def _already_enriched(headers: list[str]) -> bool:
-    if any(header in GENERIC_HEADERS for header in headers):
+    if list(headers) != list(TIMELINE_PROCESS_OUTPUT_HEADERS):
         return False
-    if not _semantic_headers_present(headers):
-        return False
-    return _derived_columns_present(headers)
+    return not any(header in headers for header in GENERIC_HEADERS | DROPPED_HEADERS)
 
 
-def _build_output_headers(headers: list[str]) -> list[str]:
-    renamed = [GENERIC_TO_SEMANTIC.get(header, header) for header in headers]
-
-    if "ProcessDescription" not in renamed and "Text" not in headers:
-        if "Pad" in renamed:
-            renamed.insert(renamed.index("Pad"), "ProcessDescription")
-        else:
-            renamed.append("ProcessDescription")
-
-    for column in TIMELINE_PROCESS_DERIVED_COLUMNS:
-        if column not in renamed:
-            renamed.append(column)
-
-    return renamed
+def _cell(header_index: dict[str, int], row: list[str], *names: str) -> str:
+    for name in names:
+        idx = header_index.get(name)
+        if idx is not None and idx < len(row):
+            return row[idx]
+    return ""
 
 
 def enrich_timeline_process_csv(csv_path: Path) -> int:
-    """Read case timeline_process.csv, rename headers, append derived columns, rewrite in place.
+    """Read case timeline_process.csv, emit semantic columns, rewrite in place.
 
     Returns the number of data rows written.
     """
@@ -146,42 +126,47 @@ def enrich_timeline_process_csv(csv_path: Path) -> int:
         )
         return table.row_count
 
-    output_headers = _build_output_headers(table.headers)
-    ppid_idx = output_headers.index("PPID")
-    process_description_idx = output_headers.index("ProcessDescription")
+    header_index = {header: idx for idx, header in enumerate(table.headers)}
     output_rows: list[list[str]] = []
 
     for row_idx, row in enumerate(table.rows):
-        output_row = [""] * len(output_headers)
-
-        for src_idx, header in enumerate(table.headers):
-            dst_name = GENERIC_TO_SEMANTIC.get(header, header)
-            if dst_name in output_headers:
-                dst_idx = output_headers.index(dst_name)
-                output_row[dst_idx] = row[src_idx] if src_idx < len(row) else ""
-
-        output_row[ppid_idx] = convert_ppid_to_decimal(output_row[ppid_idx])
-
-        text = output_row[process_description_idx]
-        process_name, account, kernel_path = parse_timeline_process_text(text)
-        if text and not process_name and not account and not kernel_path:
+        process_description = _cell(
+            header_index, row, "ProcessDescription", "Text"
+        )
+        ppid = convert_ppid_to_decimal(
+            _cell(header_index, row, "PPID", "Value32")
+        )
+        process_name, account, kernel_path = parse_timeline_process_text(
+            process_description
+        )
+        if process_description and not process_name and not account and not kernel_path:
             logger.debug(
                 "timeline_process ProcessDescription parse miss row %d: %r",
                 row_idx,
-                text,
+                process_description,
             )
+            process_name = _cell(header_index, row, "ProcessName") or process_name
+            account = _cell(header_index, row, "Account") or account
+            kernel_path = _cell(header_index, row, "KernelPath") or kernel_path
 
-        for column, value in zip(
-            TIMELINE_PROCESS_DERIVED_COLUMNS,
-            (process_name, account, kernel_path),
-        ):
-            output_row[output_headers.index(column)] = value
-
-        output_rows.append(output_row)
+        output_rows.append(
+            [
+                _cell(header_index, row, "Time"),
+                _cell(header_index, row, "Type"),
+                _cell(header_index, row, "Action"),
+                _cell(header_index, row, "PID"),
+                ppid,
+                _cell(header_index, row, "EprocessVirtualAddress", "Value64"),
+                process_name,
+                account,
+                kernel_path,
+                process_description,
+            ]
+        )
 
     enriched = RawTable(
         source_path=csv_path,
-        headers=output_headers,
+        headers=list(TIMELINE_PROCESS_OUTPUT_HEADERS),
         rows=output_rows,
         ingest_errors=list(table.ingest_errors),
         sha256=table.sha256,

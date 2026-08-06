@@ -73,12 +73,11 @@ def _semantic_row(
         "2024-01-15 08:00:00",
         "ShTask",
         action,
-        task_description,
-        "",
         task_name,
         command_line,
         parameters,
         user,
+        task_description,
     ]
 
 
@@ -244,7 +243,9 @@ class TestEnrichTimelineTaskCsv:
         enrich_timeline_task_csv(csv_path)
         table = read_csv_safe(csv_path)
 
-        assert table.rows[0][3] == DEFENDER_TEXT
+        assert table.headers[-1] == "TaskDescription"
+        assert table.rows[0][-1] == DEFENDER_TEXT
+        assert "Pad" not in table.headers
 
     def test_dropped_generic_columns_absent(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_task.csv"
@@ -257,6 +258,7 @@ class TestEnrichTimelineTaskCsv:
         assert "Value32" not in table.headers
         assert "Value64" not in table.headers
         assert "Text" not in table.headers
+        assert "Pad" not in table.headers
         assert "TaskDescription" in table.headers
 
     def test_parsed_fields(self, tmp_path: Path, sample_rows: list[list[str]]) -> None:
@@ -265,19 +267,22 @@ class TestEnrichTimelineTaskCsv:
         enrich_timeline_task_csv(csv_path)
 
         table = read_csv_safe(csv_path)
-        assert table.rows[0][5:9] == [
+        assert table.rows[0][3:7] == [
             "Windows Defender Scheduled Scan",
             DEFENDER_CMD,
             DEFENDER_PARAMS,
             "LocalSystem",
         ]
-        assert table.rows[1][5:9] == [
+        assert table.rows[1][3:7] == [
             "UsageDataReceiver",
             "Custom Handler",
             "---",
             "LocalSystem",
         ]
-        assert table.rows[2][5:9] == ["", "", "", ""]
+        assert table.rows[2][3:7] == ["", "", "", ""]
+        assert table.rows[0][-1] == DEFENDER_TEXT
+        assert table.rows[1][-1] == USAGE_DATA_TEXT
+        assert table.rows[2][-1] == MALFORMED_TEXT
 
     def test_malformed_description_preserved_with_empty_parsed_fields(
         self, tmp_path: Path
@@ -288,8 +293,8 @@ class TestEnrichTimelineTaskCsv:
         enrich_timeline_task_csv(csv_path)
         table = read_csv_safe(csv_path)
 
-        assert table.rows[0][3] == MALFORMED_TEXT
-        assert table.rows[0][5:9] == ["", "", "", ""]
+        assert table.rows[0][-1] == MALFORMED_TEXT
+        assert table.rows[0][3:7] == ["", "", "", ""]
 
     def test_quoted_text_with_comma(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_task.csv"
@@ -299,8 +304,8 @@ class TestEnrichTimelineTaskCsv:
         enrich_timeline_task_csv(csv_path)
         table = read_csv_safe(csv_path)
 
-        assert table.rows[0][3] == text
-        assert table.rows[0][5:9] == ["My Task", r"C:\path\a,b,c.exe", "run", "LocalSystem"]
+        assert table.rows[0][-1] == text
+        assert table.rows[0][3:7] == ["My Task", r"C:\path\a,b,c.exe", "run", "LocalSystem"]
 
     def test_unicode_in_text(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_task.csv"
@@ -310,8 +315,8 @@ class TestEnrichTimelineTaskCsv:
         enrich_timeline_task_csv(csv_path)
         table = read_csv_safe(csv_path)
 
-        assert table.rows[0][3] == text
-        assert table.rows[0][5:9] == ["משימה", r"C:\עברית\tool.exe", "arg", "LocalSystem"]
+        assert table.rows[0][-1] == text
+        assert table.rows[0][3:7] == ["משימה", r"C:\עברית\tool.exe", "arg", "LocalSystem"]
 
     def test_empty_text(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_task.csv"
@@ -320,8 +325,8 @@ class TestEnrichTimelineTaskCsv:
         enrich_timeline_task_csv(csv_path)
         table = read_csv_safe(csv_path)
 
-        assert table.rows[0][3] == ""
-        assert table.rows[0][5:9] == ["", "", "", ""]
+        assert table.rows[0][-1] == ""
+        assert table.rows[0][3:7] == ["", "", "", ""]
 
     def test_missing_text_header(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_task.csv"
@@ -333,8 +338,8 @@ class TestEnrichTimelineTaskCsv:
         table = read_csv_safe(csv_path)
 
         assert table.headers == list(TIMELINE_TASK_OUTPUT_HEADERS)
-        assert table.rows[0][3] == ""
-        assert table.rows[0][5:9] == ["", "", "", ""]
+        assert table.rows[0][3:7] == ["", "", "", ""]
+        assert table.rows[0][-1] == ""
 
     def test_row_count_preserved(
         self, tmp_path: Path, sample_rows: list[list[str]]
@@ -392,22 +397,20 @@ class TestEnrichTimelineTaskCsv:
             "Time",
             "Type",
             "Action",
-            "TaskDescription",
-            "Pad",
             "CommandLine",
             "Parameters",
             "User",
+            "TaskDescription",
         ]
         values = [
             "CustomName",
             "2024-01-15 08:00:00",
             "ShTask",
             "MOD",
-            "stored description",
-            "",
             "stored cmd",
             "stored params",
             "stored user",
+            "stored description",
         ]
         _write_csv(csv_path, headers, [values])
 
@@ -523,13 +526,13 @@ class TestTimelinesExtractorIntegration:
 
         task = read_csv_safe(out_dir / "timeline_task.csv")
         assert task.headers == list(TIMELINE_TASK_OUTPUT_HEADERS)
-        assert task.rows[0][3] == DEFENDER_TEXT
-        assert task.rows[0][5:9] == [
+        assert task.rows[0][3:7] == [
             "Windows Defender Scheduled Scan",
             DEFENDER_CMD,
             DEFENDER_PARAMS,
             "LocalSystem",
         ]
+        assert task.rows[0][-1] == DEFENDER_TEXT
 
         process = read_csv_safe(out_dir / "timeline_process.csv")
         assert process.headers == list(TIMELINE_PROCESS_OUTPUT_HEADERS)

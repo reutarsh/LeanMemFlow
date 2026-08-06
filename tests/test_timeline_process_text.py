@@ -69,6 +69,7 @@ def _semantic_row(
     eprocess_address: str = "0",
     process_description: str = POWERSHELL_TEXT,
 ) -> list[str]:
+    process_name, account, kernel_path = parse_timeline_process_text(process_description)
     return [
         "2024-01-15 08:00:00",
         "PROC",
@@ -76,8 +77,10 @@ def _semantic_row(
         pid,
         ppid,
         eprocess_address,
+        process_name,
+        account,
+        kernel_path,
         process_description,
-        "",
     ]
 
 
@@ -119,7 +122,7 @@ def _map_timeline_process(row: dict[str, str]) -> dict[str, str]:
         "Value32": _truncate(_normalize_ppid(_cell(row, "PPID", "Value32")), 100),
         "Value64": _truncate(_cell(row, "EprocessVirtualAddress", "Value64"), 100),
         "Text": _cell(row, "ProcessDescription", "Text"),
-        "Pad": _truncate(_cell(row, "Pad"), 100),
+        "Pad": "",
     }
 
 
@@ -140,7 +143,7 @@ def _build_timeline_process_event_row(row: dict[str, str]) -> str:
         _normalize_ppid(_get_row_value(row, "PPID", "Value32")),
         _get_row_value(row, "EprocessVirtualAddress", "Value64"),
         _get_row_value(row, "ProcessDescription", "Text"),
-        _get_row_value(row, "Pad"),
+        "",
     ]
     joined = "||".join(values)
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
@@ -277,8 +280,9 @@ class TestEnrichTimelineProcessCsv:
         enrich_timeline_process_csv(csv_path)
         table = read_csv_safe(csv_path)
 
-        assert table.headers[6] == "ProcessDescription"
-        assert table.rows[0][6] == POWERSHELL_TEXT
+        assert table.headers[-1] == "ProcessDescription"
+        assert table.rows[0][-1] == POWERSHELL_TEXT
+        assert "Pad" not in table.headers
 
     def test_parsed_fields(self, tmp_path: Path, sample_rows: list[list[str]]) -> None:
         csv_path = tmp_path / "timeline_process.csv"
@@ -286,9 +290,12 @@ class TestEnrichTimelineProcessCsv:
         enrich_timeline_process_csv(csv_path)
 
         table = read_csv_safe(csv_path)
-        assert table.rows[0][8:] == ["powershell.exe", "user3", POWERSHELL_PATH]
-        assert table.rows[1][8:] == ["svchost.exe", "*SYSTEM", SVCHOST_PATH]
-        assert table.rows[2][8:] == ["", "", ""]
+        assert table.rows[0][6:9] == ["powershell.exe", "user3", POWERSHELL_PATH]
+        assert table.rows[1][6:9] == ["svchost.exe", "*SYSTEM", SVCHOST_PATH]
+        assert table.rows[2][6:9] == ["", "", ""]
+        assert table.rows[0][-1] == POWERSHELL_TEXT
+        assert table.rows[1][-1] == SVCHOST_TEXT
+        assert table.rows[2][-1] == "malformed without brackets"
 
     def test_quoted_text_with_comma(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_process.csv"
@@ -302,8 +309,8 @@ class TestEnrichTimelineProcessCsv:
         enrich_timeline_process_csv(csv_path)
         table = read_csv_safe(csv_path)
 
-        assert table.rows[0][6] == text
-        assert table.rows[0][8:] == ["proc.exe", "user3", r"\Device\HarddiskVolume3\a,b,c"]
+        assert table.rows[0][-1] == text
+        assert table.rows[0][6:9] == ["proc.exe", "user3", r"\Device\HarddiskVolume3\a,b,c"]
 
     def test_missing_text_header(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "timeline_process.csv"
@@ -316,8 +323,8 @@ class TestEnrichTimelineProcessCsv:
 
         assert table.headers == list(TIMELINE_PROCESS_OUTPUT_HEADERS)
         assert table.rows[0][4] == "4"
-        assert table.rows[0][6] == ""
-        assert table.rows[0][8:] == ["", "", ""]
+        assert table.rows[0][6:9] == ["", "", ""]
+        assert table.rows[0][-1] == ""
 
     def test_row_count_preserved(
         self, tmp_path: Path, sample_rows: list[list[str]]
@@ -362,7 +369,7 @@ class TestCSharpAliasParity:
             _sample_row(value32="0x4", value64=EPROCESS_ADDRESS),
         )
         semantic = _row_dict(
-            list(TIMELINE_PROCESS_OUTPUT_HEADERS[:8]),
+            list(TIMELINE_PROCESS_OUTPUT_HEADERS),
             _semantic_row(ppid="4", eprocess_address=EPROCESS_ADDRESS),
         )
 
@@ -374,7 +381,7 @@ class TestCSharpAliasParity:
             _sample_row(value32="0x4", value64=EPROCESS_ADDRESS),
         )
         semantic = _row_dict(
-            list(TIMELINE_PROCESS_OUTPUT_HEADERS[:8]),
+            list(TIMELINE_PROCESS_OUTPUT_HEADERS),
             _semantic_row(ppid="4", eprocess_address=EPROCESS_ADDRESS),
         )
 
@@ -408,8 +415,8 @@ class TestTimelinesExtractorIntegration:
         enriched = read_csv_safe(out_dir / "timeline_process.csv")
         assert enriched.headers == list(TIMELINE_PROCESS_OUTPUT_HEADERS)
         assert enriched.row_count == 1
-        assert enriched.rows[0][6] == POWERSHELL_TEXT
-        assert enriched.rows[0][8:] == ["powershell.exe", "user3", POWERSHELL_PATH]
+        assert enriched.rows[0][6:9] == ["powershell.exe", "user3", POWERSHELL_PATH]
+        assert enriched.rows[0][-1] == POWERSHELL_TEXT
 
         timeline_all = read_csv_safe(out_dir / "timeline_all.csv")
         assert timeline_all.headers == ["time"]
@@ -447,7 +454,8 @@ class TestTimelinesExtractorIntegration:
 
         table = read_csv_safe(out_dir / "timeline_process.csv")
         assert list(TIMELINE_PROCESS_DERIVED_COLUMNS) == ["ProcessName", "Account", "KernelPath"]
-        assert table.rows[0][8:] == ["svchost.exe", "*SYSTEM", SVCHOST_PATH]
+        assert table.rows[0][6:9] == ["svchost.exe", "*SYSTEM", SVCHOST_PATH]
+        assert table.rows[0][-1] == SVCHOST_TEXT
 
     def test_process_enrichment_skipped_when_result_not_ok(self, tmp_path: Path) -> None:
         from extractors.base import ExtractResult

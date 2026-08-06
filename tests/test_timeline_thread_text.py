@@ -71,7 +71,6 @@ def _semantic_row(
         tid,
         ethread_address,
         thread_info,
-        "",
     ]
 
 
@@ -129,7 +128,7 @@ def _map_timeline_thread(row: dict[str, str]) -> dict[str, object]:
         "Tid": _parse_tid(_cell(row, "TID", "Value32")),
         "EThreadAddress": _truncate(_cell(row, "EThreadAddress", "Value64"), 100),
         "ThreadInfo": _cell(row, "ThreadInfo", "Text"),
-        "Pad": _truncate(_cell(row, "Pad"), 100),
+        "Pad": "",
     }
 
 
@@ -150,7 +149,7 @@ def _build_timeline_thread_event_row(row: dict[str, str]) -> str:
         _normalize_tid(_get_row_value(row, "TID", "Value32")),
         _get_row_value(row, "EThreadAddress", "Value64"),
         _get_row_value(row, "ThreadInfo", "Text"),
-        _get_row_value(row, "Pad"),
+        "",
     ]
     joined = "||".join(values)
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
@@ -249,6 +248,7 @@ class TestEnrichTimelineThreadCsv:
         assert "Value32" not in table.headers
         assert "Value64" not in table.headers
         assert "Text" not in table.headers
+        assert "Pad" not in table.headers
         assert "TID" in table.headers
         assert "EThreadAddress" in table.headers
         assert "ThreadInfo" in table.headers
