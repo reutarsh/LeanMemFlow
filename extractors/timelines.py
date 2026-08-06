@@ -40,6 +40,10 @@ from extractors.timeline_thread_text import (
     TIMELINE_THREAD_FILENAME,
     enrich_timeline_thread_csv,
 )
+from extractors.timeline_web_text import (
+    TIMELINE_WEB_FILENAME,
+    enrich_timeline_web_csv,
+)
 
 
 def _files_written_contains(files_written: list[str], filename: str) -> bool:
@@ -72,4 +76,6 @@ class TimelinesExtractor(BaseExtractor):
             enrich_timeline_ntfs_csv(out_dir / TIMELINE_NTFS_FILENAME)
         if result.ok and _files_written_contains(result.files_written, TIMELINE_THREAD_FILENAME):
             enrich_timeline_thread_csv(out_dir / TIMELINE_THREAD_FILENAME)
+        if result.ok and _files_written_contains(result.files_written, TIMELINE_WEB_FILENAME):
+            enrich_timeline_web_csv(out_dir / TIMELINE_WEB_FILENAME)
         return result

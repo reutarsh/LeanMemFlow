@@ -25,6 +25,7 @@ from extractors.timeline_task_text import (
     TIMELINE_TASK_GENERIC_HEADERS,
     TIMELINE_TASK_OUTPUT_HEADERS,
 )
+from extractors.timeline_web_text import TIMELINE_WEB_OUTPUT_HEADERS
 from memflow_common.csv_io import read_csv_safe
 
 GENERIC_HEADERS = list(TIMELINE_NET_GENERIC_HEADERS)
@@ -657,8 +658,7 @@ class TestTimelinesExtractorIntegration:
         assert "RegistryPath" in registry.headers
 
         web = read_csv_safe(out_dir / "timeline_web.csv")
-        assert web.headers == GENERIC_HEADERS
-        assert len(web.headers) == 8
+        assert web.headers == list(TIMELINE_WEB_OUTPUT_HEADERS)
 
         timeline_all = read_csv_safe(out_dir / "timeline_all.csv")
         assert timeline_all.headers == ["time"]

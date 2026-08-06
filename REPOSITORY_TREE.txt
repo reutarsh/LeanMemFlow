@@ -1,17 +1,17 @@
 LeanMemFlow repository tree
-Generated: 2026-08-06 07:58:50 UTC
+Generated: 2026-08-06 09:26:15 UTC
 Root: C:\work\MemProc\LeanMemFlow
 
 Excluded directories: .git, node_modules, __pycache__, .pytest_cache,
   .venv, venv, bin, obj, .vs, dist, build
 
-Totals: 7 directories, 46 files, 264.6 KB
+Totals: 7 directories, 49 files, 288.1 KB
 
 Extension counts:
-  .py: 37
+  .py: 39
   .mdc: 3
+  .txt: 3
   .md: 2
-  .txt: 2
   (no ext): 1
   .toml: 1
 
@@ -31,7 +31,7 @@ C:\work\MemProc\LeanMemFlow/
 │       ├── repository-tree.mdc  (1.2 KB)  [.cursor/rules/repository-tree.mdc]
 │       └── verify-before-dropping-fields.mdc  (1.4 KB)  [.cursor/rules/verify-before-dropping-fields.mdc]
 ├── docs/
-│   ├── 10_extractor_field_reference.md  (25.9 KB)  [docs/10_extractor_field_reference.md]
+│   ├── 10_extractor_field_reference.md  (27.4 KB)  [docs/10_extractor_field_reference.md]
 │   └── 2026-03-10-plugin-extractor-architecture.md  (2.8 KB)  [docs/2026-03-10-plugin-extractor-architecture.md]
 ├── extractors/
 │   ├── __init__.py  (1.7 KB)  [extractors/__init__.py]
@@ -48,14 +48,15 @@ C:\work\MemProc\LeanMemFlow/
 │   ├── services.py  (2.1 KB)  [extractors/services.py]
 │   ├── tasks.py  (2.5 KB)  [extractors/tasks.py]
 │   ├── threads.py  (510 B)  [extractors/threads.py]
-│   ├── timeline_kernelobject_text.py  (2.1 KB)  [extractors/timeline_kernelobject_text.py]
+│   ├── timeline_kernelobject_text.py  (4.3 KB)  [extractors/timeline_kernelobject_text.py]
 │   ├── timeline_net_text.py  (6.5 KB)  [extractors/timeline_net_text.py]
 │   ├── timeline_ntfs_text.py  (3.4 KB)  [extractors/timeline_ntfs_text.py]
 │   ├── timeline_process_text.py  (5.5 KB)  [extractors/timeline_process_text.py]
 │   ├── timeline_registry_text.py  (4.0 KB)  [extractors/timeline_registry_text.py]
 │   ├── timeline_task_text.py  (5.4 KB)  [extractors/timeline_task_text.py]
 │   ├── timeline_thread_text.py  (3.6 KB)  [extractors/timeline_thread_text.py]
-│   ├── timelines.py  (3.1 KB)  [extractors/timelines.py]
+│   ├── timeline_web_text.py  (6.0 KB)  [extractors/timeline_web_text.py]
+│   ├── timelines.py  (3.4 KB)  [extractors/timelines.py]
 │   └── unloaded_modules.py  (534 B)  [extractors/unloaded_modules.py]
 ├── memflow_common/
 │   ├── __init__.py  (78 B)  [memflow_common/__init__.py]
@@ -64,17 +65,19 @@ C:\work\MemProc\LeanMemFlow/
 │   ├── __init__.py  (2 B)  [tests/__init__.py]
 │   ├── test_csv_io.py  (9.7 KB)  [tests/test_csv_io.py]
 │   ├── test_extractors.py  (10.0 KB)  [tests/test_extractors.py]
-│   ├── test_timeline_kernelobject_text.py  (13.9 KB)  [tests/test_timeline_kernelobject_text.py]
+│   ├── test_timeline_kernelobject_text.py  (10.5 KB)  [tests/test_timeline_kernelobject_text.py]
 │   ├── test_timeline_net_text.py  (23.1 KB)  [tests/test_timeline_net_text.py]
 │   ├── test_timeline_ntfs_text.py  (19.1 KB)  [tests/test_timeline_ntfs_text.py]
 │   ├── test_timeline_process_text.py  (18.1 KB)  [tests/test_timeline_process_text.py]
-│   ├── test_timeline_registry_text.py  (13.8 KB)  [tests/test_timeline_registry_text.py]
+│   ├── test_timeline_registry_text.py  (13.9 KB)  [tests/test_timeline_registry_text.py]
 │   ├── test_timeline_task_text.py  (21.1 KB)  [tests/test_timeline_task_text.py]
-│   └── test_timeline_thread_text.py  (14.3 KB)  [tests/test_timeline_thread_text.py]
+│   ├── test_timeline_thread_text.py  (14.4 KB)  [tests/test_timeline_thread_text.py]
+│   └── test_timeline_web_text.py  (12.3 KB)  [tests/test_timeline_web_text.py]
 ├── tools/
 │   └── update_repository_tree.py  (3.7 KB)  [tools/update_repository_tree.py]
 ├── .gitignore  (21 B)  [.gitignore]
 ├── pyproject.toml  (1.9 KB)  [pyproject.toml]
 ├── README.txt  (2.6 KB)  [README.txt]
+├── REPOSITORY_TREE.txt  (4.3 KB)  [REPOSITORY_TREE.txt]
 ├── requirements.txt  (164 B)  [requirements.txt]
 └── run_extract.py  (5.8 KB)  [run_extract.py]

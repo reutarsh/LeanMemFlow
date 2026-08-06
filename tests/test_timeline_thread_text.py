@@ -16,6 +16,7 @@ from extractors.timeline_thread_text import (
     convert_tid_to_decimal,
     enrich_timeline_thread_csv,
 )
+from extractors.timeline_web_text import TIMELINE_WEB_OUTPUT_HEADERS
 from memflow_common.csv_io import read_csv_safe
 
 GENERIC_HEADERS = list(TIMELINE_THREAD_GENERIC_HEADERS)
@@ -396,8 +397,8 @@ class TestTimelinesExtractorIntegration:
         assert thread.rows[0][6] == THREAD_INFO
 
         web = read_csv_safe(out_dir / "timeline_web.csv")
-        assert web.headers == GENERIC_HEADERS
-        assert web.rows[0][6] == r"\Software\Should\Not\Change"
+        assert web.headers == list(TIMELINE_WEB_OUTPUT_HEADERS)
+        assert web.rows[0][8] == r"\Software\Should\Not\Change"
 
         assert thread_source.read_bytes() == thread_bytes
         assert process_source.read_bytes() == process_bytes

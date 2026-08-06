@@ -18,6 +18,7 @@ from extractors.timeline_registry_text import (
     TIMELINE_REGISTRY_OUTPUT_HEADERS,
     enrich_timeline_registry_csv,
 )
+from extractors.timeline_web_text import TIMELINE_WEB_OUTPUT_HEADERS
 from memflow_common.csv_io import read_csv_safe
 
 GENERIC_HEADERS = list(TIMELINE_REGISTRY_GENERIC_HEADERS)
@@ -339,9 +340,8 @@ class TestTimelinesExtractorIntegration:
         ]
 
         web = read_csv_safe(out_dir / "timeline_web.csv")
-        assert web.headers == GENERIC_HEADERS
-        assert web.rows[0][6] == r"\Software\Should\Not\Change"
-        assert len(web.headers) == 8
+        assert web.headers == list(TIMELINE_WEB_OUTPUT_HEADERS)
+        assert web.rows[0][8] == r"\Software\Should\Not\Change"
 
         timeline_all = read_csv_safe(out_dir / "timeline_all.csv")
         assert timeline_all.headers == ["time"]

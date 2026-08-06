@@ -366,6 +366,19 @@ Dropped (always unset for KObj): `PID`, `Value32`, `Pad`.
 
 | `timeline_web.csv` | Browser history artefacts |
 
+**Web case-output headers:** After extraction enrichment, the case copy of `timeline_web.csv` uses semantic names. MemProcFS source keeps the original headers. Verified against `m_fc_web.c` `MWeb_FcTimeline` (`dwPID=browser PID`, `dwData32=0`, `qwData64=0`, `uszText=browser:[…] type:[…] url:[…] info:[…]`).
+
+| Case column | MemProcFS source | Description |
+|-------------|------------------|-------------|
+| `PID` | `PID` | Browser process ID (kept; populated by MemProcFS) |
+| `Browser` | parsed from `Text` | Browser name (e.g. `chrome`, `msedge`, `firefox`) |
+| `WebAction` | parsed from `Text` | Web event type (e.g. `visit`, `download`, `loginpwd`) |
+| `Url` | parsed from `Text` | URL |
+| `Info` | parsed from `Text` | Extra info (title, filename, username, etc.) |
+| `WebDescription` | `Text` | Raw MemProcFS description string |
+
+Dropped (always unset for WEB): `Value32`, `Value64`, `Pad`.
+
 **Common fields across all timeline files:**
 
 | Field | Type | Description |
