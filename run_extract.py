@@ -67,6 +67,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=False,
         help="List all discovered extractors and exit.",
     )
+    parser.add_argument(
+        "--threads-allow-csv-only",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip MemProcFS pid/<PID>/threads/<TID> VFS ownership check when "
+            "enriching threads.csv (range join only). Default requires VFS."
+        ),
+    )
     return parser
 
 
@@ -144,7 +153,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     for name, cls in selected.items():
         logger.info("  RUN   %-24s (source=%s)", name, cls.source)
         try:
-            extractor = cls()
+            if name == "threads":
+                extractor = cls(allow_csv_only=args.threads_allow_csv_only)
+            else:
+                extractor = cls()
             result = extractor.extract(memprocfs_root, out_dir)
             results[name] = result
             status = "OK" if result.ok else "FAIL"

@@ -52,8 +52,15 @@ Extractors look for forensic CSVs under (first match wins):
   <memprocfs-path>\csv\*.csv
   <memprocfs-path>\*.csv
 
+Threads module enrichment (StartModule*) also requires the MemProcFS
+process/thread VFS tree by default:
+  <memprocfs-path>\pid\<PID>\threads\<TID>\info.txt
+so CSV ETHREAD can be checked against MemProcFS's PID/TID listing.
+CSV-only trees (no pid\): use --threads-allow-csv-only (range join only;
+less safe for PID-reuse cases).
+
 --dump-path must point at an existing file (compatibility with MemFlow CLI);
-extractors do not read the dump — they only use MemProcFS CSV output.
+extractors do not read the dump — they only use MemProcFS CSV/VFS output.
 
 Exit codes
 ----------
