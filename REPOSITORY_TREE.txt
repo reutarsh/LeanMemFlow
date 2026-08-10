@@ -1,14 +1,14 @@
 LeanMemFlow repository tree
-Generated: 2026-08-09 10:58:37 UTC
+Generated: 2026-08-10 08:54:05 UTC
 Root: C:\work\MemProc\LeanMemFlow
 
 Excluded directories: .git, node_modules, __pycache__, .pytest_cache,
   .venv, venv, bin, obj, .vs, dist, build
 
-Totals: 7 directories, 50 files, 318.2 KB
+Totals: 7 directories, 54 files, 365.8 KB
 
 Extension counts:
-  .py: 40
+  .py: 44
   .mdc: 3
   .txt: 3
   .md: 2
@@ -31,7 +31,7 @@ C:\work\MemProc\LeanMemFlow/
 │       ├── repository-tree.mdc  (1.2 KB)  [.cursor/rules/repository-tree.mdc]
 │       └── verify-before-dropping-fields.mdc  (1.4 KB)  [.cursor/rules/verify-before-dropping-fields.mdc]
 ├── docs/
-│   ├── 10_extractor_field_reference.md  (30.7 KB)  [docs/10_extractor_field_reference.md]
+│   ├── 10_extractor_field_reference.md  (32.3 KB)  [docs/10_extractor_field_reference.md]
 │   └── 2026-03-10-plugin-extractor-architecture.md  (2.8 KB)  [docs/2026-03-10-plugin-extractor-architecture.md]
 ├── extractors/
 │   ├── __init__.py  (1.7 KB)  [extractors/__init__.py]
@@ -41,13 +41,14 @@ C:\work\MemProc\LeanMemFlow/
 │   ├── drivers.py  (2.0 KB)  [extractors/drivers.py]
 │   ├── files.py  (496 B)  [extractors/files.py]
 │   ├── findevil.py  (516 B)  [extractors/findevil.py]
-│   ├── handles.py  (508 B)  [extractors/handles.py]
+│   ├── handles.py  (5.1 KB)  [extractors/handles.py]
 │   ├── modules.py  (518 B)  [extractors/modules.py]
-│   ├── netstat.py  (6.7 KB)  [extractors/netstat.py]
+│   ├── netstat.py  (6.4 KB)  [extractors/netstat.py]
+│   ├── pid_ownership.py  (9.2 KB)  [extractors/pid_ownership.py]
 │   ├── processes.py  (3.5 KB)  [extractors/processes.py]
 │   ├── services.py  (2.1 KB)  [extractors/services.py]
 │   ├── tasks.py  (2.5 KB)  [extractors/tasks.py]
-│   ├── threads.py  (10.7 KB)  [extractors/threads.py]
+│   ├── threads.py  (11.5 KB)  [extractors/threads.py]
 │   ├── timeline_kernelobject_text.py  (4.3 KB)  [extractors/timeline_kernelobject_text.py]
 │   ├── timeline_net_text.py  (6.7 KB)  [extractors/timeline_net_text.py]
 │   ├── timeline_ntfs_text.py  (3.4 KB)  [extractors/timeline_ntfs_text.py]
@@ -60,12 +61,15 @@ C:\work\MemProc\LeanMemFlow/
 │   └── unloaded_modules.py  (534 B)  [extractors/unloaded_modules.py]
 ├── memflow_common/
 │   ├── __init__.py  (78 B)  [memflow_common/__init__.py]
-│   └── csv_io.py  (11.3 KB)  [memflow_common/csv_io.py]
+│   ├── csv_io.py  (11.3 KB)  [memflow_common/csv_io.py]
+│   └── memprocfs_stage.py  (11.0 KB)  [memflow_common/memprocfs_stage.py]
 ├── tests/
 │   ├── __init__.py  (2 B)  [tests/__init__.py]
 │   ├── test_csv_io.py  (9.7 KB)  [tests/test_csv_io.py]
 │   ├── test_extractors.py  (10.0 KB)  [tests/test_extractors.py]
-│   ├── test_threads.py  (15.4 KB)  [tests/test_threads.py]
+│   ├── test_handles.py  (8.8 KB)  [tests/test_handles.py]
+│   ├── test_memprocfs_stage.py  (5.2 KB)  [tests/test_memprocfs_stage.py]
+│   ├── test_threads.py  (17.6 KB)  [tests/test_threads.py]
 │   ├── test_timeline_kernelobject_text.py  (10.5 KB)  [tests/test_timeline_kernelobject_text.py]
 │   ├── test_timeline_net_text.py  (23.3 KB)  [tests/test_timeline_net_text.py]
 │   ├── test_timeline_ntfs_text.py  (19.1 KB)  [tests/test_timeline_ntfs_text.py]
@@ -78,7 +82,7 @@ C:\work\MemProc\LeanMemFlow/
 │   └── update_repository_tree.py  (3.7 KB)  [tools/update_repository_tree.py]
 ├── .gitignore  (21 B)  [.gitignore]
 ├── pyproject.toml  (1.9 KB)  [pyproject.toml]
-├── README.txt  (2.9 KB)  [README.txt]
-├── REPOSITORY_TREE.txt  (4.6 KB)  [REPOSITORY_TREE.txt]
+├── README.txt  (4.1 KB)  [README.txt]
+├── REPOSITORY_TREE.txt  (4.9 KB)  [REPOSITORY_TREE.txt]
 ├── requirements.txt  (164 B)  [requirements.txt]
-└── run_extract.py  (6.3 KB)  [run_extract.py]
+└── run_extract.py  (9.3 KB)  [run_extract.py]

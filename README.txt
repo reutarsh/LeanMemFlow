@@ -52,12 +52,34 @@ Extractors look for forensic CSVs under (first match wins):
   <memprocfs-path>\csv\*.csv
   <memprocfs-path>\*.csv
 
+By default run_extract stages a local copy under:
+  <case>\.leanmemflow_memprocfs_stage\
+This copies forensic CSVs plus only the pid\ VFS files needed for thread /
+handle ownership gates (never memory.vmem or other huge binaries). While
+copying, ETHREAD / handle-table / name.txt values are parsed into an in-memory
+cache so extractors do not re-read those files. The stage folder is deleted
+when the run finishes (success or failure).
+Use --no-stage-memprocfs to read --memprocfs-path directly (extractors then
+parallel-preload thread info.txt instead).
+
 Threads module enrichment (StartModule*) also requires the MemProcFS
 process/thread VFS tree by default:
   <memprocfs-path>\pid\<PID>\threads\<TID>\info.txt
 so CSV ETHREAD can be checked against MemProcFS's PID/TID listing.
 CSV-only trees (no pid\): use --threads-allow-csv-only (range join only;
 less safe for PID-reuse cases).
+
+Handles ProcessName enrichment also requires the process handle VFS tree
+by default:
+  <memprocfs-path>\pid\<PID>\handles\handles.txt
+  <memprocfs-path>\pid\<PID>\name.txt   (preferred name source)
+so CSV Handle+Object can be checked against MemProcFS's per-PID handle table.
+CSV-only trees (no pid\): use --handles-allow-csv-only (PID join to
+process.csv / name.txt only; less safe for PID-reuse cases).
+
+When several extractors run in one pass, run_extract shares an in-memory
+VFS/process-name cache (lazy, CSV-driven) across handles, threads, and
+netstat — no full pid\ tree walk.
 
 --dump-path must point at an existing file (compatibility with MemFlow CLI);
 extractors do not read the dump — they only use MemProcFS CSV/VFS output.

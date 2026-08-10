@@ -5,13 +5,16 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from extractors.pid_ownership import (
+    VfsContext,
+    normalize_hex_address,
+    parse_address,
+    parse_info_txt_ethread,
+)
 from extractors.threads import (
     START_MODULE_HEADERS,
     ThreadsExtractor,
     find_containing_module,
-    normalize_hex_address,
-    parse_address,
-    parse_info_txt_ethread,
     resolve_thread_start_address,
     verify_thread_vfs,
 )
@@ -495,3 +498,62 @@ class TestThreadsExtractor:
         table = read_csv_safe(out_dir / "threads.csv")
         assert table.headers[: len(THREAD_HEADERS)] == THREAD_HEADERS
         assert table.rows[0][1] == "4242"
+
+    def test_ethread_cache_reads_info_txt_once_per_tid(self, tmp_path: Path) -> None:
+        root = tmp_path / "memprocfs"
+        _setup_forensic(
+            root,
+            thread_rows=[
+                _thread_row(tid="2000", win32_start_address="0x7ff000001234"),
+                _thread_row(tid="2000", win32_start_address="0x7ff000001234"),
+            ],
+            module_rows=[
+                _module_row(
+                    pid="1000",
+                    name="app.exe",
+                    start="0x7ff000000000",
+                    end="0x7ff00000ffff",
+                    path=r"C:\app.exe",
+                )
+            ],
+        )
+        _write_info_txt(
+            root / "pid" / "1000" / "threads" / "2000" / "info.txt",
+            DEFAULT_ETHREAD,
+        )
+
+        ctx = VfsContext(root)
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        ThreadsExtractor(ctx=ctx).extract(root, out_dir)
+
+        # Preload + gate share one read per unique TID.
+        assert ctx.info_txt_reads == 1
+        assert ("1000", "2000") in ctx.ethreads
+        table = read_csv_safe(out_dir / "threads.csv")
+        assert table.rows[0][-1] == "ok"
+        assert table.rows[1][-1] == "ok"
+
+    def test_seeded_ethreads_skip_disk_reads(self, tmp_path: Path) -> None:
+        root = tmp_path / "memprocfs"
+        _setup_forensic(
+            root,
+            thread_rows=[_thread_row(win32_start_address="0x7ff000001234")],
+            module_rows=[
+                _module_row(
+                    pid="1000",
+                    name="app.exe",
+                    start="0x7ff000000000",
+                    end="0x7ff00000ffff",
+                    path=r"C:\app.exe",
+                )
+            ],
+        )
+        ctx = VfsContext(root)
+        ctx.seed_ethreads({("1000", "2000"): DEFAULT_ETHREAD})
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        ThreadsExtractor(ctx=ctx).extract(root, out_dir)
+        assert ctx.info_txt_reads == 0
+        table = read_csv_safe(out_dir / "threads.csv")
+        assert table.rows[0][-1] == "ok"

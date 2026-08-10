@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from extractors.base import BaseExtractor, ExtractResult
+from extractors.pid_ownership import VfsContext, build_process_name_map
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,9 @@ class NetstatExtractor(BaseExtractor):
         "src-addr", "src-port", "dst-addr", "dst-port",
     ]
 
+    def __init__(self, *, ctx: VfsContext | None = None) -> None:
+        self.ctx = ctx
+
     @staticmethod
     def _resolve_netstat_path(memprocfs_root: Path) -> Path | None:
         for parts in NETSTAT_CANDIDATES:
@@ -84,20 +88,10 @@ class NetstatExtractor(BaseExtractor):
                 return candidate
         return None
 
-    @staticmethod
-    def _build_process_name_map(memprocfs_root: Path) -> dict[str, str]:
-        process_csv = BaseExtractor._resolve_forensic_csv(memprocfs_root, "process.csv")
-        if process_csv is None:
-            return {}
-        with process_csv.open("r", newline="", encoding="utf-8", errors="replace") as fh:
-            reader = csv.DictReader(fh)
-            mapping: dict[str, str] = {}
-            for row in reader:
-                pid = (row.get("pid") or row.get("PID") or "").strip()
-                name = (row.get("name") or row.get("Name") or "").strip()
-                if pid and name:
-                    mapping[pid] = name
-            return mapping
+    def _build_process_name_map(self, memprocfs_root: Path) -> dict[str, str]:
+        if self.ctx is not None:
+            return self.ctx.get_process_name_map()
+        return build_process_name_map(memprocfs_root)
 
     @staticmethod
     def _row_from_forensic(idx: dict[str, str]) -> list[str] | None:

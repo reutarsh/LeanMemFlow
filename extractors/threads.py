@@ -15,15 +15,33 @@ from __future__ import annotations
 
 import csv
 import logging
-import re
+from bisect import bisect_right
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 from extractors.base import BaseExtractor, ExtractResult
+from extractors.pid_ownership import (
+    VfsContext,
+    normalize_hex_address,
+    parse_address,
+    parse_info_txt_ethread,
+)
 
 logger = logging.getLogger(__name__)
+
+# Re-export for callers/tests that import from this module.
+__all__ = [
+    "START_MODULE_HEADERS",
+    "ThreadsExtractor",
+    "find_containing_module",
+    "normalize_hex_address",
+    "parse_address",
+    "parse_info_txt_ethread",
+    "resolve_thread_start_address",
+    "verify_thread_vfs",
+]
 
 START_MODULE_HEADERS: tuple[str, ...] = (
     "StartModuleName",
@@ -33,8 +51,6 @@ START_MODULE_HEADERS: tuple[str, ...] = (
 )
 
 VfsStatus = Literal["ok", "no_vfs_thread", "ethread_mismatch"]
-
-_ETHREAD_INFO_RE = re.compile(r"^\s*ETHREAD\s*:\s*(?P<addr>\S+)\s*$", re.IGNORECASE | re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -50,39 +66,6 @@ class _ModuleRange:
         return self.end - self.start
 
 
-def parse_address(value: str) -> int | None:
-    """Parse a MemProcFS hex/dec address; return None if blank or invalid.
-
-    MemProcFS thread CSV often emits bare hex (``7ff791d2bfd0``) without ``0x``;
-    module CSV usually includes the prefix. Treat strings containing a-f as hex.
-    """
-    if value is None:
-        return None
-    stripped = value.strip()
-    if not stripped:
-        return None
-    try:
-        lowered = stripped.lower()
-        if lowered.startswith("0x"):
-            return int(stripped, 16)
-        if any(ch in lowered for ch in "abcdef"):
-            return int(stripped, 16)
-        return int(stripped, 10)
-    except ValueError:
-        return None
-
-
-def normalize_hex_address(value: str) -> str:
-    """Normalize a hex address for equality checks (no 0x, lower, no leading zeros)."""
-    if value is None:
-        return ""
-    stripped = value.strip().lower()
-    if stripped.startswith("0x"):
-        stripped = stripped[2:]
-    stripped = stripped.lstrip("0")
-    return stripped or "0"
-
-
 def resolve_thread_start_address(start_address: str, win32_start_address: str) -> int | None:
     """Prefer nonzero Win32StartAddress; fall back to StartAddress."""
     win32 = parse_address(win32_start_address)
@@ -95,25 +78,25 @@ def find_containing_module(
     modules: list[_ModuleRange],
     address: int,
 ) -> _ModuleRange | None:
-    """Return the tightest module range containing *address*, or None."""
+    """Return the tightest module range containing *address*, or None.
+
+    *modules* must be sorted by ``(start, span)`` ascending (as produced by
+    ``_build_module_index``). Uses bisect on start addresses, then picks the
+    smallest spanning match among candidates with ``start <= address``.
+    """
+    if not modules:
+        return None
+    starts = [m.start for m in modules]
+    idx = bisect_right(starts, address) - 1
     best: _ModuleRange | None = None
-    for module in modules:
-        if module.start <= address <= module.end:
+    for i in range(idx, -1, -1):
+        module = modules[i]
+        if module.start > address:
+            continue
+        if address <= module.end:
             if best is None or module.span < best.span:
                 best = module
     return best
-
-
-def parse_info_txt_ethread(info_path: Path) -> str | None:
-    """Return the ETHREAD address from MemProcFS thread info.txt, or None."""
-    try:
-        text = info_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    match = _ETHREAD_INFO_RE.search(text)
-    if match is None:
-        return None
-    return match.group("addr").strip()
 
 
 def verify_thread_vfs(
@@ -121,16 +104,14 @@ def verify_thread_vfs(
     pid: str,
     tid: str,
     ethread_csv: str,
+    ctx: VfsContext | None = None,
 ) -> VfsStatus:
     """Confirm CSV ETHREAD matches pid/<PID>/threads/<TID>/info.txt."""
     if not pid or not tid:
         return "no_vfs_thread"
 
-    info_path = Path(memprocfs_root) / "pid" / pid / "threads" / tid / "info.txt"
-    if not info_path.is_file():
-        return "no_vfs_thread"
-
-    ethread_vfs = parse_info_txt_ethread(info_path)
+    cache = ctx if ctx is not None else VfsContext(Path(memprocfs_root))
+    ethread_vfs = cache.get_ethread_vfs(pid, tid)
     if ethread_vfs is None:
         return "no_vfs_thread"
 
@@ -144,8 +125,14 @@ class ThreadsExtractor(BaseExtractor):
     output_filename = "threads.csv"
     source = "forensic_csv"
 
-    def __init__(self, *, allow_csv_only: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        allow_csv_only: bool = False,
+        ctx: VfsContext | None = None,
+    ) -> None:
         self.allow_csv_only = allow_csv_only
+        self.ctx = ctx
 
     @staticmethod
     def _cell(row: dict[str, str], *names: str) -> str:
@@ -196,6 +183,8 @@ class ThreadsExtractor(BaseExtractor):
                         base_str=start_str,
                     )
                 )
+        for pid, modules in index.items():
+            modules.sort(key=lambda m: (m.start, m.span))
         return index
 
     def _resolve_module_fields(
@@ -235,31 +224,60 @@ class ThreadsExtractor(BaseExtractor):
         if not fieldnames:
             return ExtractResult(ok=False, error=f"{source} has no header row")
 
+        ctx = self.ctx if self.ctx is not None else VfsContext(root)
         module_index = self._build_module_index(root)
         status_counts: Counter[str] = Counter()
 
-        output_headers = fieldnames + [
-            h for h in START_MODULE_HEADERS if h not in fieldnames
-        ]
+        # Column indexes for hot loop (avoid repeated dict/list scans).
+        def _col(*names: str) -> str | None:
+            for name in names:
+                if name in fieldnames:
+                    return name
+            return None
+
+        pid_col = _col("PID", "pid")
+        tid_col = _col("TID", "tid")
+        ethread_col = _col("ETHREAD", "ethread")
+        start_col = _col("StartAddress", "start_address")
+        win32_col = _col("Win32StartAddress", "win32_start_address")
+
+        derived_positions = {
+            header: fieldnames.index(header) if header in fieldnames else None
+            for header in START_MODULE_HEADERS
+        }
+        append_derived = [h for h in START_MODULE_HEADERS if h not in fieldnames]
+
+        if not self.allow_csv_only:
+            pairs = []
+            for row in source_rows:
+                pid = (row.get(pid_col, "") if pid_col else "").strip()
+                tid = (row.get(tid_col, "") if tid_col else "").strip()
+                if pid and tid:
+                    pairs.append((pid, tid))
+            preloaded = ctx.preload_ethreads(pairs)
+            if preloaded:
+                logger.info("threads preloaded %d info.txt ETHREAD values", preloaded)
+
+        output_headers = fieldnames + append_derived
         output_rows: list[list[str]] = []
 
         for row in source_rows:
-            pid = self._cell(row, "PID", "pid").strip()
-            tid = self._cell(row, "TID", "tid").strip()
-            ethread = self._cell(row, "ETHREAD", "ethread").strip()
+            pid = (row.get(pid_col, "") if pid_col else "").strip()
+            tid = (row.get(tid_col, "") if tid_col else "").strip()
+            ethread = (row.get(ethread_col, "") if ethread_col else "").strip()
 
             module_name = ""
             module_path = ""
             module_base = ""
 
             if not self.allow_csv_only:
-                vfs_status = verify_thread_vfs(root, pid, tid, ethread)
+                vfs_status = verify_thread_vfs(root, pid, tid, ethread, ctx=ctx)
                 if vfs_status != "ok":
                     status = vfs_status
                 else:
                     address = resolve_thread_start_address(
-                        self._cell(row, "StartAddress", "start_address"),
-                        self._cell(row, "Win32StartAddress", "win32_start_address"),
+                        row.get(start_col, "") if start_col else "",
+                        row.get(win32_col, "") if win32_col else "",
                     )
                     (
                         module_name,
@@ -273,8 +291,8 @@ class ThreadsExtractor(BaseExtractor):
                     )
             else:
                 address = resolve_thread_start_address(
-                    self._cell(row, "StartAddress", "start_address"),
-                    self._cell(row, "Win32StartAddress", "win32_start_address"),
+                    row.get(start_col, "") if start_col else "",
+                    row.get(win32_col, "") if win32_col else "",
                 )
                 module_name, module_path, module_base, status = self._resolve_module_fields(
                     pid=pid,
@@ -291,8 +309,9 @@ class ThreadsExtractor(BaseExtractor):
                 "StartModuleStatus": status,
             }
             for header in START_MODULE_HEADERS:
-                if header in fieldnames:
-                    out_row[fieldnames.index(header)] = derived[header]
+                pos = derived_positions[header]
+                if pos is not None:
+                    out_row[pos] = derived[header]
                 else:
                     out_row.append(derived[header])
             output_rows.append(out_row)

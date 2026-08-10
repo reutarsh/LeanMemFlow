@@ -248,23 +248,44 @@ Loaded Windows kernel drivers enumerated from the kernel driver list.
 
 ## 9. Open Handles — `handles.csv`
 
-**Extractor:** `HandlesExtractor` | **Source:** `forensic_csv` (MemProcFS `/forensic/csv/handles.csv`)
+**Extractor:** `HandlesExtractor` | **Source:** `forensic_csv` (`handles.csv`) with **VFS ownership gate** (`pid/<PID>/handles/handles.txt`)
 
 All open kernel object handles across all processes. One row per handle.
 
+**MemProcFS source headers (typical):** `PID, Handle, Object, Access, Type, Tag, HandleCount, Device, Description`.
+
 | Field | Type | Description |
 |-------|------|-------------|
-| `pid` | integer | **Process ID** that holds this handle. |
-| `process` | string | **Process image name.** Short name of the owning process. |
-| `handle` | hex | **Handle value.** The numeric handle as it appears in the process's handle table (multiple of 4). |
-| `access` | hex | **Granted access mask.** Bit-field of access rights granted when the handle was opened (e.g. `0x1f01ff` = full access on a file). |
-| `type` | string | **Object type.** Kernel object type string: `File`, `Process`, `Thread`, `Event`, `Mutant`, `Section`, `Key`, `Token`, `Port`, `Timer`, `Desktop`, `WindowStation`, etc. |
-| `detail` | string | **Object name / description.** For `File` handles: the file path. For `Key` handles: the registry key path. For `Process` handles: the target PID and name. May be empty for unnamed objects. |
+| `PID` | integer | **Process ID** that holds this handle. |
+| `Handle` | hex | **Handle value.** The numeric handle as it appears in the process's handle table (multiple of 4). |
+| `Object` | hex | **Kernel object address** for the handle. |
+| `Access` | hex | **Granted access mask.** Bit-field of access rights granted when the handle was opened (e.g. `0x1f01ff` = full access on a file). |
+| `Type` | string | **Object type.** Kernel object type string: `File`, `Process`, `Thread`, `Event`, `Mutant`, `Section`, `Key`, `Token`, `Port`, `Timer`, `Desktop`, `WindowStation`, etc. |
+| `Tag` | string | Pool tag / type tag when present. |
+| `HandleCount` | hex/int | Handle count for the object when present. |
+| `Device` | string | Device association when present. |
+| `Description` | string | **Object name / description.** For `File` handles: the file path. For `Key` handles: the registry key path. For `Process` handles: the target PID and name. May be empty for unnamed objects. |
+| `ProcessName` | string | **Derived.** Owning process image name after ownership gate. |
+| `ProcessNameStatus` | string | **Derived.** Why `ProcessName` is filled or empty (see below). |
+
+**Ownership gate (default):** before filling `ProcessName`, require MemProcFS VFS file `pid/<PID>/handles/handles.txt` and that the CSV `(Handle, Object)` pair appears there (normalized hex). If the VFS tree is missing, the handle is absent, or the Object differs for that Handle, leave `ProcessName` empty.
+
+After the gate passes, name resolution order is: `pid/<PID>/name.txt`, then forensic `process.csv` for that PID.
+
+**`--handles-allow-csv-only`:** skips the VFS gate and joins by PID only (`name.txt` if present, else `process.csv`). Use for lab trees that have only `forensic/csv/` and no `pid/` tree. Default remains VFS-required (fail closed).
+
+| `ProcessNameStatus` | Meaning |
+|---------------------|---------|
+| `ok` | Name filled after gate (or csv-only join) |
+| `no_vfs_handle` | Missing `handles.txt` / PID path, or Handle not listed (default mode) |
+| `object_mismatch` | Same Handle under PID, but Object address differs |
+| `no_process` | Gate passed (or csv-only) but no name in `name.txt` / `process.csv` |
 
 **Forensic use cases:**
 - Process handles (`type=Process`) with `access` containing `PROCESS_VM_READ | PROCESS_VM_WRITE` = credential dumping candidate (LSASS targeting).
 - `Section` handles to unusual paths = shared memory injection or process hollowing.
 - `Mutant` handles with recognisable malware mutex names = malware family identification.
+- Safest enrichment needs a MemProcFS mount (or saved tree) that still includes `pid/*/handles/*`, not CSV-only.
 
 ---
 
@@ -447,7 +468,7 @@ Dropped (always unset for WEB): `Value32`, `Value64`, `Pad`.
 | services | `services.csv` | forensic_csv | pid, state, start_type, binary_path, service_name, run_as |
 | findevil | `findevil.csv` | forensic_csv | pid, name, type, description, address |
 | drivers | `drivers.csv` | forensic_csv | offset, base, size, path, name, service_name |
-| handles | `handles.csv` | forensic_csv | pid, handle, access, type, detail |
+| handles | `handles.csv` | forensic_csv + VFS pid/handles gate | PID, Handle, Object, ProcessName, ProcessNameStatus |
 | tasks | `tasks.csv` | forensic_csv | name, path, command, arguments, trigger |
 | files | `files.csv` | forensic_csv | pid, address, file |
 | devices | `devices.csv` | forensic_csv | offset, driver_path, device_name, major_function_table |

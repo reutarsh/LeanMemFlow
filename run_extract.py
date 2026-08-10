@@ -10,6 +10,12 @@ from typing import Any, Dict, List, Optional
 
 from extractors import discover_extractors
 from extractors.base import ExtractResult
+from extractors.pid_ownership import VfsContext
+from memflow_common.memprocfs_stage import (
+    default_stage_root,
+    remove_memprocfs_stage,
+    stage_memprocfs_tree,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +80,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help=(
             "Skip MemProcFS pid/<PID>/threads/<TID> VFS ownership check when "
             "enriching threads.csv (range join only). Default requires VFS."
+        ),
+    )
+    parser.add_argument(
+        "--handles-allow-csv-only",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip MemProcFS pid/<PID>/handles/handles.txt VFS ownership check when "
+            "enriching handles.csv (PID join to process.csv / name.txt only). "
+            "Default requires VFS."
+        ),
+    )
+    parser.add_argument(
+        "--no-stage-memprocfs",
+        action="store_true",
+        default=False,
+        help=(
+            "Do not copy MemProcFS inputs to a local stage under the case directory. "
+            "Default stages forensic CSVs and needed pid/ VFS files (faster on live "
+            "mounts), then deletes the stage when the run finishes."
         ),
     )
     return parser
@@ -149,49 +175,102 @@ def main(argv: Optional[List[str]] = None) -> int:
     print(f"Extractors: {', '.join(selected)}")
     print()
 
-    results: Dict[str, ExtractResult] = {}
-    for name, cls in selected.items():
-        logger.info("  RUN   %-24s (source=%s)", name, cls.source)
-        try:
-            if name == "threads":
-                extractor = cls(allow_csv_only=args.threads_allow_csv_only)
-            else:
-                extractor = cls()
-            result = extractor.extract(memprocfs_root, out_dir)
-            results[name] = result
-            status = "OK" if result.ok else "FAIL"
-            logger.info(
-                "  %-4s  %-24s  %d rows  %s",
-                status, name, result.rows,
-                ", ".join(result.files_written) if result.files_written else "",
+    stage_root: Path | None = None
+    extract_root = memprocfs_root
+    exit_code = 0
+
+    try:
+        if not args.no_stage_memprocfs:
+            stage_root = default_stage_root(case_dir)
+            need_thread_vfs = (
+                "threads" in selected and not args.threads_allow_csv_only
             )
-        except Exception as exc:
-            results[name] = ExtractResult(ok=False, error=str(exc))
-            logger.error("  FAIL  %-24s  %s", name, exc)
+            need_handle_vfs = (
+                "handles" in selected and not args.handles_allow_csv_only
+            )
+            try:
+                stage_result = stage_memprocfs_tree(
+                    memprocfs_root,
+                    stage_root,
+                    need_thread_vfs=need_thread_vfs,
+                    need_handle_vfs=need_handle_vfs,
+                )
+            except Exception as exc:
+                logger.error("Failed to stage MemProcFS tree: %s", exc)
+                return 2
+            extract_root = stage_result.root
+            print(f"Stage:         {extract_root}")
+            print()
+        else:
+            stage_result = None
 
-    print()
-    print("=" * 60)
-    print("Extraction Summary")
-    print("=" * 60)
-    ok_count = sum(1 for r in results.values() if r.ok)
-    fail_count = sum(1 for r in results.values() if not r.ok)
-    total_rows = sum(r.rows for r in results.values())
+        vfs_ctx = VfsContext(extract_root)
+        if stage_result is not None:
+            vfs_ctx.seed_ethreads(stage_result.ethreads)
+            vfs_ctx.seed_handle_indexes(stage_result.handle_indexes)
+            vfs_ctx.seed_vfs_names(stage_result.vfs_names)
+        results: Dict[str, ExtractResult] = {}
+        for name, cls in selected.items():
+            logger.info("  RUN   %-24s (source=%s)", name, cls.source)
+            try:
+                if name == "threads":
+                    extractor = cls(
+                        allow_csv_only=args.threads_allow_csv_only,
+                        ctx=vfs_ctx,
+                    )
+                elif name == "handles":
+                    extractor = cls(
+                        allow_csv_only=args.handles_allow_csv_only,
+                        ctx=vfs_ctx,
+                    )
+                elif name == "netstat":
+                    extractor = cls(ctx=vfs_ctx)
+                else:
+                    extractor = cls()
+                result = extractor.extract(extract_root, out_dir)
+                results[name] = result
+                status = "OK" if result.ok else "FAIL"
+                logger.info(
+                    "  %-4s  %-24s  %d rows  %s",
+                    status, name, result.rows,
+                    ", ".join(result.files_written) if result.files_written else "",
+                )
+            except Exception as exc:
+                results[name] = ExtractResult(ok=False, error=str(exc))
+                logger.error("  FAIL  %-24s  %s", name, exc)
 
-    for name, r in results.items():
-        tag = "OK  " if r.ok else "FAIL"
-        detail = f"{r.rows} rows" if r.ok else (r.error or "unknown error")
-        print(f"  [{tag}] {name:24s}  {detail}")
+        print()
+        print("=" * 60)
+        print("Extraction Summary")
+        print("=" * 60)
+        ok_count = sum(1 for r in results.values() if r.ok)
+        fail_count = sum(1 for r in results.values() if not r.ok)
+        total_rows = sum(r.rows for r in results.values())
 
-    print()
-    print(f"  Succeeded: {ok_count}  |  Failed: {fail_count}  |  Total rows: {total_rows}")
-    print(f"  Output: {out_dir}")
-    print("=" * 60)
+        for name, r in results.items():
+            tag = "OK  " if r.ok else "FAIL"
+            detail = f"{r.rows} rows" if r.ok else (r.error or "unknown error")
+            print(f"  [{tag}] {name:24s}  {detail}")
 
-    if ok_count == 0 and fail_count > 0:
-        return 2
-    if fail_count > 0 and ok_count > 0:
-        return 1
-    return 0
+        print()
+        print(f"  Succeeded: {ok_count}  |  Failed: {fail_count}  |  Total rows: {total_rows}")
+        print(f"  Output: {out_dir}")
+        print("=" * 60)
+
+        if ok_count == 0 and fail_count > 0:
+            exit_code = 2
+        elif fail_count > 0 and ok_count > 0:
+            exit_code = 1
+        else:
+            exit_code = 0
+    finally:
+        if stage_root is not None:
+            try:
+                remove_memprocfs_stage(stage_root)
+            except Exception as exc:
+                logger.warning("Failed to remove MemProcFS stage %s: %s", stage_root, exc)
+
+    return exit_code
 
 
 if __name__ == "__main__":
