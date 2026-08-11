@@ -3,8 +3,9 @@
 Primary input is ``modules.csv`` (MemProcFS forensic export). ``dlls.csv`` is
 used only when ``modules.csv`` is absent (legacy or custom trees).
 
-Intentional blanks from native ``modules.csv`` (typical MemProcFS export):
-``module_type`` (internal type not present in the CSV), ``pe_timedatestamp`` /
+``module_type`` is derived from MemProcFS ``Name`` prefixes when the source
+row has no ``module_type`` column. Intentional blanks from native
+``modules.csv`` (typical MemProcFS export): ``pe_timedatestamp`` /
 ``pe_checksum`` (not in the standard module table). ``entry_point`` is filled
 only when the source row includes ``Entry`` / ``entry``.
 """
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from extractors.base import BaseExtractor, ExtractResult
+from extractors.module_type import parse_module_type
 
 logger = logging.getLogger(__name__)
 
@@ -49,16 +51,21 @@ class DllsExtractor(BaseExtractor):
         return DllsExtractor._cell(row, "KernelPath", "kernelpath").strip()
 
     def _row_from_source(self, row: dict[str, str]) -> list[str]:
+        module_name = self._cell(row, "module_name", "Name", "name").strip()
+        module_type = self._cell(row, "module_type").strip()
+        if not module_type:
+            module_type = parse_module_type(module_name)
+
         return [
             self._cell(row, "pid", "PID").strip(),
             self._cell(row, "process_name", "Process", "process").strip(),
-            self._cell(row, "module_name", "Name", "name").strip(),
+            module_name,
             self._first_path(row),
             self._cell(row, "base_address", "Start", "base", "Base").strip(),
             self._cell(row, "size", "Size").strip(),
             self._cell(row, "entry_point", "entry", "Entry").strip(),
             self._cell(row, "is_wow64", "Wow64", "wow64").strip(),
-            self._cell(row, "module_type").strip(),
+            module_type,
             self._cell(row, "pe_timedatestamp", "timedatestamp", "TimeDateStamp").strip(),
             self._cell(row, "pe_checksum", "checksum", "Checksum").strip(),
         ]

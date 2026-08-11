@@ -140,6 +140,85 @@ def test_dlls_extractor_file_based(memprocfs_root: Path, tmp_path: Path) -> None
         rows = list(csv.reader(fh))
     assert rows[0][2] == "module_name"
     assert rows[1][2] == "ntdll.dll"
+    with (tmp_path / "dlls.csv").open("r", encoding="utf-8", newline="") as fh:
+        dict_rows = list(csv.DictReader(fh))
+    assert dict_rows[0]["module_type"] == "NORMAL"
+
+
+@pytest.mark.parametrize(
+    ("module_name", "expected"),
+    [
+        ("ntdll.dll", "NORMAL"),
+        ("_DATA-wevtapi.dll", "DATA"),
+        ("_NOTLINKED-combase.dll", "NOTLINKED"),
+        ("_INJECTED-example.dll", "INJECTED"),
+        ("_NA-region", "NA"),
+        ("_64-ntdll.dll", "NORMAL"),
+        ("_64-_NOTLINKED-example.dll", "NOTLINKED"),
+        ("  _data-wevtapi.dll  ", "DATA"),
+        ("  _NOTLINKED-combase.dll", "NOTLINKED"),
+        ("", "NORMAL"),
+        (None, "NORMAL"),
+    ],
+)
+def test_parse_module_type(module_name: str | None, expected: str) -> None:
+    from extractors.module_type import parse_module_type
+
+    assert parse_module_type(module_name) == expected
+
+
+def test_dlls_extractor_preserves_existing_module_type(tmp_path: Path) -> None:
+    from extractors.dlls import DllsExtractor
+
+    root = tmp_path / "memprocfs"
+    _write_csv(
+        root / "forensic" / "csv" / "modules.csv",
+        ["PID", "Process", "Name", "Wow64", "Size", "Start", "Path", "module_type"],
+        [
+            [
+                "10",
+                "app.exe",
+                "_NOTLINKED-combase.dll",
+                "0",
+                "0x1000",
+                "0x1000",
+                "combase.dll",
+                "CUSTOM",
+            ],
+        ],
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+    result = DllsExtractor().extract(root, out)
+    assert result.ok is True
+    with (out / "dlls.csv").open("r", encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    assert rows[0]["module_name"] == "_NOTLINKED-combase.dll"
+    assert rows[0]["module_type"] == "CUSTOM"
+
+
+def test_dlls_extractor_module_type_from_prefix(tmp_path: Path) -> None:
+    from extractors.dlls import DllsExtractor
+
+    root = tmp_path / "memprocfs"
+    _write_csv(
+        root / "forensic" / "csv" / "modules.csv",
+        ["PID", "Process", "Name", "Wow64", "Size", "Start", "Path"],
+        [
+            ["4", "System", "hal.dll", "0", "0x6000", "0xfffff804d7800000", r"\SystemRoot\system32\hal.dll"],
+            ["4160", "app.exe", "_NOTLINKED-combase.dll", "1", "0x285000", "0x76ae0000", "combase.dll"],
+            ["1680", "svchost.exe", "_DATA-wevtapi.dll", "0", "0x53000", "0x1f15f460000", r"\Windows\System32\wevtapi.dll"],
+        ],
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+    result = DllsExtractor().extract(root, out)
+    assert result.ok is True
+    with (out / "dlls.csv").open("r", encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    assert rows[0]["module_type"] == "NORMAL"
+    assert rows[1]["module_type"] == "NOTLINKED"
+    assert rows[2]["module_type"] == "DATA"
 
 
 def test_netstat_extractor_forensic_csv(memprocfs_root: Path, tmp_path: Path) -> None:
