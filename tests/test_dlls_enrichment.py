@@ -1,4 +1,4 @@
-"""Tests for DllsExtractor entry_point / entry_point_rva dump enrichment."""
+"""Tests for DllsExtractor dump PE enrichment (entry / stamp / checksum)."""
 
 from __future__ import annotations
 
@@ -62,11 +62,15 @@ def _enrichment(
     *,
     entry_point: int | None = None,
     entry_point_rva: int | None = None,
+    pe_checksum: int | None = None,
+    pe_timedatestamp: int | None = None,
 ) -> dict[tuple[int, int], ModulePeEnrichment]:
     return {
         (pid, base): ModulePeEnrichment(
             entry_point=entry_point,
             entry_point_rva=entry_point_rva,
+            pe_checksum=pe_checksum,
+            pe_timedatestamp=pe_timedatestamp,
         )
     }
 
@@ -166,19 +170,71 @@ def test_hexadecimal_base_case_and_prefix_parsing() -> None:
     assert merged[0][7] == format_rva(0x10)
 
 
-def test_pe_fields_not_written_by_merge() -> None:
+def test_pe_fields_fill_empty_cells() -> None:
     rows = [_canonical_row(base=format_address(0x1000))]
     item = ModulePeEnrichment(
         entry_point=0x1100,
         entry_point_rva=0x100,
         pe_timedatestamp=99,
-        pe_checksum=88,
+        pe_checksum=0xCAFEBABE,
     )
-    merged, _ = merge_enrichment_rows([row[:] for row in rows], {(10, 0x1000): item})
-    assert merged[0][10] == ""
-    assert merged[0][11] == ""
+    merged, stats = merge_enrichment_rows([row[:] for row in rows], {(10, 0x1000): item})
     assert merged[0][6] == format_address(0x1100)
     assert merged[0][7] == format_rva(0x100)
+    assert merged[0][10] == "99"
+    assert merged[0][11] == "3405691582"
+    assert stats["pe_timedatestamp"] == 1
+    assert stats["pe_checksum"] == 1
+
+
+def test_pe_checksum_zero_is_written() -> None:
+    rows = [_canonical_row(base=format_address(0x1000))]
+    enrichment = _enrichment(10, 0x1000, pe_checksum=0)
+    merged, stats = merge_enrichment_rows([row[:] for row in rows], enrichment)
+    assert merged[0][11] == "0"
+    assert stats["pe_checksum"] == 1
+
+
+def test_pe_timedatestamp_zero_is_written() -> None:
+    rows = [_canonical_row(base=format_address(0x1000))]
+    enrichment = _enrichment(10, 0x1000, pe_timedatestamp=0)
+    merged, stats = merge_enrichment_rows([row[:] for row in rows], enrichment)
+    assert merged[0][10] == "0"
+    assert stats["pe_timedatestamp"] == 1
+
+
+def test_existing_pe_checksum_is_preserved() -> None:
+    rows = [_canonical_row(base=format_address(0x1000), checksum="54321")]
+    enrichment = _enrichment(10, 0x1000, pe_checksum=999)
+    merged, stats = merge_enrichment_rows([row[:] for row in rows], enrichment)
+    assert merged[0][11] == "54321"
+    assert stats["pe_checksum"] == 0
+
+
+def test_existing_pe_timedatestamp_is_preserved() -> None:
+    rows = [_canonical_row(base=format_address(0x1000), timestamp="12345")]
+    enrichment = _enrichment(10, 0x1000, pe_timedatestamp=999)
+    merged, stats = merge_enrichment_rows([row[:] for row in rows], enrichment)
+    assert merged[0][10] == "12345"
+    assert stats["pe_timedatestamp"] == 0
+
+
+@patch("extractors.dlls.DllsExtractor._load_enrichment")
+def test_pe_fields_via_extract(mock_load: MagicMock, tmp_path: Path) -> None:
+    base = 0x77000000
+    mock_load.return_value = _enrichment(
+        10, base, pe_checksum=0xCAFEBABE, pe_timedatestamp=0x12345678
+    )
+    root = _modules_root(
+        tmp_path,
+        [["10", "app.exe", "ntdll.dll", "0", "0x1000", format_address(base), "ntdll.dll"]],
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+    DllsExtractor().extract(root, out, dump_path=tmp_path / "mem.dmp")
+    rows = _read_dlls(out)
+    assert rows[0]["pe_checksum"] == "3405691582"
+    assert rows[0]["pe_timedatestamp"] == "305419896"
 
 
 @patch("extractors.dlls.DllsExtractor._load_enrichment", return_value={})

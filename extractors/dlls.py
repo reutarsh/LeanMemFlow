@@ -4,10 +4,9 @@ Primary input is ``modules.csv`` (MemProcFS forensic export). ``dlls.csv`` is
 used only when ``modules.csv`` is absent (legacy or custom trees).
 
 ``module_type`` is derived from MemProcFS ``Name`` prefixes when the source
-row has no ``module_type`` column. ``entry_point_rva`` (and empty absolute
-``entry_point``) are filled from optional dump PE enrichment when
-``dump_path`` is supplied. Intentional blanks from native ``modules.csv``:
-``pe_timedatestamp`` / ``pe_checksum`` (not in the standard module table).
+row has no ``module_type`` column. ``entry_point_rva``, empty absolute
+``entry_point``, empty ``pe_timedatestamp``, and empty ``pe_checksum`` are
+filled from optional dump PE enrichment when ``dump_path`` is supplied.
 """
 
 from __future__ import annotations
@@ -26,6 +25,8 @@ _COL_PID = 0
 _COL_BASE = 4
 _COL_ENTRY = 6
 _COL_ENTRY_RVA = 7
+_COL_TIMESTAMP = 10
+_COL_CHECKSUM = 11
 
 
 def parse_address(value: str | None) -> int | None:
@@ -75,11 +76,17 @@ def merge_enrichment_rows(
     rows: list[list[str]],
     enrichment: dict[tuple[int, int], Any],
 ) -> tuple[list[list[str]], dict[str, int]]:
-    """Fill empty entry_point / entry_point_rva from dump enrichment.
+    """Fill empty entry_point / entry_point_rva / PE stamp fields from dump enrichment.
 
-    Does not write pe_timedatestamp or pe_checksum.
+    ``0`` is valid for pe_timedatestamp and pe_checksum and is written.
     """
-    stats = {"matched": 0, "entry_point": 0, "entry_point_rva": 0}
+    stats = {
+        "matched": 0,
+        "entry_point": 0,
+        "entry_point_rva": 0,
+        "pe_timedatestamp": 0,
+        "pe_checksum": 0,
+    }
 
     for row in rows:
         pid = _parse_pid(row[_COL_PID])
@@ -105,6 +112,16 @@ def merge_enrichment_rows(
             if absolute is not None:
                 row[_COL_ENTRY] = format_address(absolute)
                 stats["entry_point"] += 1
+
+        timestamp = getattr(item, "pe_timedatestamp", None)
+        if not row[_COL_TIMESTAMP].strip() and timestamp is not None:
+            row[_COL_TIMESTAMP] = str(timestamp)
+            stats["pe_timedatestamp"] += 1
+
+        checksum = getattr(item, "pe_checksum", None)
+        if not row[_COL_CHECKSUM].strip() and checksum is not None:
+            row[_COL_CHECKSUM] = str(checksum)
+            stats["pe_checksum"] += 1
 
     return rows, stats
 
@@ -209,17 +226,20 @@ class DllsExtractor(BaseExtractor):
                 enrichment = self._load_enrichment(dump_path, rows)
             except Exception as exc:
                 logger.warning(
-                    "DLL entry-point enrichment failed for dump %s: %s",
+                    "DLL PE enrichment failed for dump %s: %s",
                     dump_path,
                     exc,
                 )
             rows, stats = merge_enrichment_rows(rows, enrichment)
             logger.info(
-                "DLL enrichment: matched=%d/%d, entry_point=%d, entry_point_rva=%d",
+                "DLL enrichment: matched=%d/%d, entry_point=%d, "
+                "entry_point_rva=%d, pe_timedatestamp=%d, pe_checksum=%d",
                 stats["matched"],
                 len(rows),
                 stats["entry_point"],
                 stats["entry_point_rva"],
+                stats["pe_timedatestamp"],
+                stats["pe_checksum"],
             )
 
         self.write_csv(out_dir, self.output_filename, self.HEADERS, rows)

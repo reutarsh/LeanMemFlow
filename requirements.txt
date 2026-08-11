@@ -1,7 +1,8 @@
 # LeanMemFlow – Python dependencies
 # Runtime: Python 3.10+ standard library for CSV extractors.
 #
-# Optional — DLL entry_point / entry_point_rva enrichment from --dump-path:
+# Optional — DLL entry_point / entry_point_rva / pe_timedatestamp /
+# pe_checksum enrichment from --dump-path:
 #   memprocfs>=4.0
 # Without it, dlls.csv still builds from modules.csv; those fields stay empty
 # unless already present in the source CSV.

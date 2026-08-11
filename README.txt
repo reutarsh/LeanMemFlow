@@ -21,9 +21,10 @@ Requirements
 ------------
   Python 3.10+
   Stdlib only for CSV extractors.
-  Optional: memprocfs>=4.0 for dlls.csv entry_point / entry_point_rva
-  enrichment from --dump-path. Without it, dlls still builds from
-  modules.csv; those fields stay empty unless already in CSV.
+  Optional: memprocfs>=4.0 for dlls.csv entry_point / entry_point_rva /
+  pe_timedatestamp / pe_checksum enrichment from --dump-path. Without it,
+  dlls still builds from modules.csv; those fields stay empty unless
+  already in CSV.
 
 Install (optional)
 ------------------
@@ -86,9 +87,9 @@ netstat — no full pid\ tree walk.
 
 --dump-path must point at an existing memory dump file. Most extractors use
 only MemProcFS CSV/VFS output. The dlls extractor also opens the dump (via
-the optional memprocfs Python package) to fill empty entry_point and
-entry_point_rva when possible. module_type is derived from Name prefixes
-even without dump enrichment.
+the optional memprocfs Python package) to fill empty entry_point,
+entry_point_rva, pe_timedatestamp, and pe_checksum when possible.
+module_type is derived from Name prefixes even without dump enrichment.
 
 Exit codes
 ----------

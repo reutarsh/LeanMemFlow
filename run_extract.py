@@ -33,8 +33,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "Path to an existing raw memory dump file. Validated always; "
-            "also used by the dlls extractor for entry_point / entry_point_rva "
-            "enrichment (requires the memprocfs Python package)."
+            "also used by the dlls extractor for entry_point / entry_point_rva / "
+            "pe_timedatestamp / pe_checksum enrichment (requires the memprocfs "
+            "Python package)."
         ),
     )
     parser.add_argument(

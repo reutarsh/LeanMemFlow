@@ -72,7 +72,7 @@ One row per network socket or connection visible in kernel memory.
 
 ## 3. Loaded DLLs — `dlls.csv`
 
-**Extractor:** `DllsExtractor` | **Source:** `forensic_csv` (reads `modules.csv` first, then `dlls.csv` if needed) with optional dump PE enrichment for entry fields
+**Extractor:** `DllsExtractor` | **Source:** `forensic_csv` (reads `modules.csv` first, then `dlls.csv` if needed) with optional dump PE enrichment for entry and checksum fields
 
 One row per DLL loaded in each process's virtual address space.
 
@@ -88,10 +88,10 @@ One row per DLL loaded in each process's virtual address space.
 | `entry_point_rva` | hex | **PE entry offset from module base** (`AddressOfEntryPoint`). Stable for the same image across dumps. Filled from dump PE header when empty; not in typical MemProcFS `modules.csv`. |
 | `is_wow64` | boolean | **WoW64 context.** `True` if this module is mapped inside a 32-bit (WoW64) process. Affects address interpretation (32-bit vs 64-bit pointers). |
 | `module_type` | string | **Derived from MemProcFS `Name` prefixes** (case-insensitive; optional `_64-` Wow64 strip first): `_DATA-` → `DATA`, `_NOTLINKED-` → `NOTLINKED`, `_INJECTED-` → `INJECTED`, `_NA-` → `NA`, else `NORMAL`. Existing CSV `module_type` values are preserved. |
-| `pe_timedatestamp` | integer | **PE compile timestamp.** Not in typical MemProcFS `modules.csv`; left empty unless the source already has `TimeDateStamp` / similar. |
-| `pe_checksum` | integer | **PE optional header checksum.** Not in typical MemProcFS `modules.csv`; left empty unless the source already has `Checksum` / similar. |
+| `pe_timedatestamp` | integer | **PE compile timestamp** (decimal Unix seconds from COFF `TimeDateStamp`). Filled from dump PE enrichment when empty; `0` is valid and written. Existing non-empty CSV values are never overwritten. |
+| `pe_checksum` | integer | **PE optional header checksum** (decimal). Filled from dump PE enrichment when empty; `0` is valid and written. Existing non-empty CSV values are never overwritten. |
 
-**Dump PE enrichment:** when `run_extract` passes `--dump-path`, the dlls extractor opens the dump via the `memprocfs` Python package, reads mapped PE headers for PIDs present in the CSV, and fills empty `entry_point_rva` / `entry_point` only. If `memprocfs` is missing or enrichment fails, CSV output is still written; those fields stay empty. Without a dump path, behavior is CSV-only (plus `module_type` from Name prefixes).
+**Dump PE enrichment:** when `run_extract` passes `--dump-path`, the dlls extractor opens the dump via the `memprocfs` Python package, reads mapped PE headers for PIDs present in the CSV, and fills empty `entry_point_rva` / `entry_point` / `pe_timedatestamp` / `pe_checksum`. If `memprocfs` is missing or enrichment fails, CSV output is still written; those fields stay empty. Without a dump path, behavior is CSV-only (plus `module_type` from Name prefixes).
 
 **Forensic use cases:**
 - Find reflectively-loaded DLLs: `module_path` is empty but a mapping exists at `base_address`.
@@ -466,7 +466,7 @@ Dropped (always unset for WEB): `Value32`, `Value64`, `Pad`.
 |-----------|-------------|--------|------------|
 | processes | `process.csv` | forensic_csv | pid, ppid, name, path, user, cmdline, create_time, wow64 |
 | netstat | `net.csv` | forensic_csv (net.csv) / vfs fallback | pid, protocol, state, src-addr, src-port, dst-addr, dst-port |
-| dlls | `dlls.csv` | forensic_csv (modules.csv) + optional dump PE | pid, module_name, module_type, base_address, entry_point, entry_point_rva |
+| dlls | `dlls.csv` | forensic_csv (modules.csv) + optional dump PE | pid, module_name, module_type, base_address, entry_point, entry_point_rva, pe_timedatestamp, pe_checksum |
 | modules | `modules.csv` | forensic_csv | pid, name, path, base, size, entry |
 | threads | `threads.csv` | forensic_csv + VFS pid/threads gate (+ modules) | PID, TID, ETHREAD, StartModuleName, StartModuleBase, StartModuleStatus |
 | services | `services.csv` | forensic_csv | pid, state, start_type, binary_path, service_name, run_as |
