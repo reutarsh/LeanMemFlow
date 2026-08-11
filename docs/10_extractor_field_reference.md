@@ -72,9 +72,9 @@ One row per network socket or connection visible in kernel memory.
 
 ## 3. Loaded DLLs — `dlls.csv`
 
-**Extractor:** `DllsExtractor` | **Source:** `forensic_csv` (reads `modules.csv` first, then `dlls.csv` if needed)
+**Extractor:** `DllsExtractor` | **Source:** `forensic_csv` (reads `modules.csv` first, then `dlls.csv` if needed) with optional dump PE enrichment for entry fields
 
-One row per DLL loaded in each process's virtual address space. Includes PE header metadata pulled from the mapped image.
+One row per DLL loaded in each process's virtual address space.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -82,19 +82,22 @@ One row per DLL loaded in each process's virtual address space. Includes PE head
 | `process_name` | string | **Process image name.** Short name of the owning process. |
 | `module_name` | string | **DLL short name.** Filename as seen in the PEB loader list (e.g. `ntdll.dll`, `kernel32.dll`). May include MemProcFS type prefixes such as `_NOTLINKED-` or `_DATA-`. |
 | `module_path` | string | **Full on-disk path.** From `Path` when set; otherwise `KernelPath` (e.g. `\SystemRoot\…`). Empty when the module is not backed by a file (e.g. reflectively loaded shellcode). |
-| `base_address` | hex | **Load base address.** Virtual memory address where the DLL's first byte is mapped in the process's address space (e.g. `0x7ff8a1230000`). |
+| `base_address` | hex | **Load base address.** Virtual memory address where the DLL's first byte is mapped (`Start` in MemProcFS `modules.csv`). Changes across dumps due to ASLR. |
 | `size` | integer | **Mapped size (bytes).** Size of the DLL's virtual memory mapping. Different from the on-disk file size due to section alignment. |
-| `entry_point` | hex | **DllMain entry point.** Virtual address of the module's entry function. Filled only when the source CSV has `Entry` / `entry`. Typical MemProcFS `modules.csv` often omits it, so this column may be empty. |
+| `entry_point` | hex | **Absolute entry VA.** Filled from CSV `Entry` when present; otherwise from dump enrichment (`mod.entry` or `base_address + entry_point_rva`). Existing non-empty values are never overwritten. |
+| `entry_point_rva` | hex | **PE entry offset from module base** (`AddressOfEntryPoint`). Stable for the same image across dumps. Filled from dump PE header when empty; not in typical MemProcFS `modules.csv`. |
 | `is_wow64` | boolean | **WoW64 context.** `True` if this module is mapped inside a 32-bit (WoW64) process. Affects address interpretation (32-bit vs 64-bit pointers). |
 | `module_type` | string | **Derived from MemProcFS `Name` prefixes** (case-insensitive; optional `_64-` Wow64 strip first): `_DATA-` → `DATA`, `_NOTLINKED-` → `NOTLINKED`, `_INJECTED-` → `INJECTED`, `_NA-` → `NA`, else `NORMAL`. Existing CSV `module_type` values are preserved. |
 | `pe_timedatestamp` | integer | **PE compile timestamp.** Not in typical MemProcFS `modules.csv`; left empty unless the source already has `TimeDateStamp` / similar. |
 | `pe_checksum` | integer | **PE optional header checksum.** Not in typical MemProcFS `modules.csv`; left empty unless the source already has `Checksum` / similar. |
 
+**Dump PE enrichment:** when `run_extract` passes `--dump-path`, the dlls extractor opens the dump via the `memprocfs` Python package, reads mapped PE headers for PIDs present in the CSV, and fills empty `entry_point_rva` / `entry_point` only. If `memprocfs` is missing or enrichment fails, CSV output is still written; those fields stay empty. Without a dump path, behavior is CSV-only (plus `module_type` from Name prefixes).
+
 **Forensic use cases:**
 - Find reflectively-loaded DLLs: `module_path` is empty but a mapping exists at `base_address`.
 - Detect DLL hijacking: same `module_name` loaded from an unexpected `module_path`.
 - Flag unusual loader state via `module_type` (`NOTLINKED`, `INJECTED`, `DATA`).
-- Identify suspicious PE timestamps when `pe_timedatestamp` is populated (future dates, year 1970, etc.).
+- Compare the same binary across dumps via `entry_point_rva` (offset stable; absolute `entry_point` moves with ASLR).
 
 ---
 
@@ -463,7 +466,7 @@ Dropped (always unset for WEB): `Value32`, `Value64`, `Pad`.
 |-----------|-------------|--------|------------|
 | processes | `process.csv` | forensic_csv | pid, ppid, name, path, user, cmdline, create_time, wow64 |
 | netstat | `net.csv` | forensic_csv (net.csv) / vfs fallback | pid, protocol, state, src-addr, src-port, dst-addr, dst-port |
-| dlls | `dlls.csv` | forensic_csv (modules.csv) | pid, module_name, module_type, base_address |
+| dlls | `dlls.csv` | forensic_csv (modules.csv) + optional dump PE | pid, module_name, module_type, base_address, entry_point, entry_point_rva |
 | modules | `modules.csv` | forensic_csv | pid, name, path, base, size, entry |
 | threads | `threads.csv` | forensic_csv + VFS pid/threads gate (+ modules) | PID, TID, ETHREAD, StartModuleName, StartModuleBase, StartModuleStatus |
 | services | `services.csv` | forensic_csv | pid, state, start_type, binary_path, service_name, run_as |

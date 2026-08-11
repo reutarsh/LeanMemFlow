@@ -31,7 +31,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dump-path",
         type=Path,
-        help="Path to an existing raw memory dump file (validated only; not read).",
+        help=(
+            "Path to an existing raw memory dump file. Validated always; "
+            "also used by the dlls extractor for entry_point / entry_point_rva "
+            "enrichment (requires the memprocfs Python package)."
+        ),
     )
     parser.add_argument(
         "--memprocfs-path",
@@ -227,7 +231,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                     extractor = cls(ctx=vfs_ctx)
                 else:
                     extractor = cls()
-                result = extractor.extract(extract_root, out_dir)
+                if name == "dlls":
+                    result = extractor.extract(
+                        extract_root, out_dir, dump_path=dump_path
+                    )
+                else:
+                    result = extractor.extract(extract_root, out_dir)
                 results[name] = result
                 status = "OK" if result.ok else "FAIL"
                 logger.info(

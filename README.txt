@@ -20,7 +20,10 @@ Layout
 Requirements
 ------------
   Python 3.10+
-  No runtime third-party packages (stdlib only).
+  Stdlib only for CSV extractors.
+  Optional: memprocfs>=4.0 for dlls.csv entry_point / entry_point_rva
+  enrichment from --dump-path. Without it, dlls still builds from
+  modules.csv; those fields stay empty unless already in CSV.
 
 Install (optional)
 ------------------
@@ -81,8 +84,11 @@ When several extractors run in one pass, run_extract shares an in-memory
 VFS/process-name cache (lazy, CSV-driven) across handles, threads, and
 netstat — no full pid\ tree walk.
 
---dump-path must point at an existing file (compatibility with MemFlow CLI);
-extractors do not read the dump — they only use MemProcFS CSV/VFS output.
+--dump-path must point at an existing memory dump file. Most extractors use
+only MemProcFS CSV/VFS output. The dlls extractor also opens the dump (via
+the optional memprocfs Python package) to fill empty entry_point and
+entry_point_rva when possible. module_type is derived from Name prefixes
+even without dump enrichment.
 
 Exit codes
 ----------
