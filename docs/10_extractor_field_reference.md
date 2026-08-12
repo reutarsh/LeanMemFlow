@@ -149,11 +149,12 @@ MemProcFS source columns include: `PID`, `TID`, `ETHREAD`, `State`, `WaitReason`
 | `StartModuleName` | string | **Derived.** Containing EXE/DLL `Name` from `modules.csv` for the resolved start VA. |
 | `StartModulePath` | string | **Derived.** Module `Path` (else `KernelPath`). |
 | `StartModuleBase` | hex | **Derived.** Module image load address (`Start`) of the containing PE. |
+| `StartModuleRva` | hex | **Derived.** Offset of the resolved start VA from `StartModuleBase` (`addr − base`). Stable across dumps of the same image (ASLR-independent). Empty when module join fails. |
 | `StartModuleStatus` | string | **Derived.** Why module fields were filled or left empty (see below). |
 
 **Ownership gate (default):** before module join, require MemProcFS VFS file `pid/<PID>/threads/<TID>/info.txt` and that its `ETHREAD:` value matches the CSV `ETHREAD` (normalized hex). Do **not** compare to `win-eprocess.txt` (that is EPROCESS, a different object). If the VFS tree is missing or ETHREAD mismatches, leave `StartModule*` empty.
 
-**Module join (case output only):** same `PID` and `module.Start <= resolve_addr <= module.End` (inclusive; `End` reconstructed as `Start + Size - 1` when missing). Resolve address = nonzero `Win32StartAddress`, else `StartAddress`. On overlapping ranges, the tightest span wins.
+**Module join (case output only):** same `PID` and `module.Start <= resolve_addr <= module.End` (inclusive; `End` reconstructed as `Start + Size - 1` when missing). Resolve address = nonzero `Win32StartAddress`, else `StartAddress`. On overlapping ranges, the tightest span wins. On a hit, also set `StartModuleRva`.
 
 **`--threads-allow-csv-only`:** skips the VFS gate (range join only). Use for lab trees that have only `forensic/csv/` and no `pid/` tree. Default remains VFS-required (fail closed).
 
@@ -169,6 +170,7 @@ MemProcFS source columns include: `PID`, `TID`, `ETHREAD`, `State`, `WaitReason`
 **Forensic use cases:**
 - `StartModuleStatus=no_module` with a nonzero start VA = address outside known modules (shellcode / injection candidate), or torn-down / unlisted code.
 - Prefer `Win32StartAddress` when triage-ing user-mode starts.
+- Compare the same thread start across dumps via `StartModuleName` + `StartModuleRva` (stable); absolute `StartAddress` moves with ASLR.
 - Safest enrichment needs a MemProcFS mount (or saved tree) that still includes `pid/*/threads/*`, not CSV-only.
 
 ---
@@ -468,7 +470,7 @@ Dropped (always unset for WEB): `Value32`, `Value64`, `Pad`.
 | netstat | `net.csv` | forensic_csv (net.csv) / vfs fallback | pid, protocol, state, src-addr, src-port, dst-addr, dst-port |
 | dlls | `dlls.csv` | forensic_csv (modules.csv) + optional dump PE | pid, module_name, module_type, base_address, entry_point, entry_point_rva, pe_timedatestamp, pe_checksum |
 | modules | `modules.csv` | forensic_csv | pid, name, path, base, size, entry |
-| threads | `threads.csv` | forensic_csv + VFS pid/threads gate (+ modules) | PID, TID, ETHREAD, StartModuleName, StartModuleBase, StartModuleStatus |
+| threads | `threads.csv` | forensic_csv + VFS pid/threads gate (+ modules) | PID, TID, ETHREAD, StartModuleName, StartModuleBase, StartModuleRva, StartModuleStatus |
 | services | `services.csv` | forensic_csv | pid, state, start_type, binary_path, service_name, run_as |
 | findevil | `findevil.csv` | forensic_csv | pid, name, type, description, address |
 | drivers | `drivers.csv` | forensic_csv | offset, base, size, path, name, service_name |

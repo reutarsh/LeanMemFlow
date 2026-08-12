@@ -156,10 +156,11 @@ class TestParseHelpers:
         )
         assert normalize_hex_address("0x0") == "0"
 
-    def test_resolve_prefers_nonzero_win32(self) -> None:
-        assert resolve_thread_start_address("0x1000", "0x2000") == 0x2000
-        assert resolve_thread_start_address("0x1000", "0x0") == 0x1000
-        assert resolve_thread_start_address("0x1000", "") == 0x1000
+    def test_format_module_rva(self) -> None:
+        from extractors.threads import format_module_rva
+
+        assert format_module_rva(0) == "0x0"
+        assert format_module_rva(0x7BFD0) == "0x7bfd0"
 
     def test_find_containing_module_tightest(self) -> None:
         from extractors.threads import _ModuleRange
@@ -219,11 +220,12 @@ class TestThreadsExtractor:
 
         assert result.ok
         table = read_csv_safe(out_dir / "threads.csv")
-        assert table.headers[-4:] == list(START_MODULE_HEADERS)
-        assert table.rows[0][-4:] == [
+        assert table.headers[-5:] == list(START_MODULE_HEADERS)
+        assert table.rows[0][-5:] == [
             "app.exe",
             r"C:\app.exe",
             "0x7ff791cb0000",
+            "0x7bfd0",
             "ok",
         ]
 
@@ -247,7 +249,7 @@ class TestThreadsExtractor:
         out_dir.mkdir()
         ThreadsExtractor().extract(root, out_dir)
         table = read_csv_safe(out_dir / "threads.csv")
-        assert table.rows[0][-4:] == ["", "", "", "no_vfs_thread"]
+        assert table.rows[0][-5:] == ["", "", "", "", "no_vfs_thread"]
 
     def test_ethread_mismatch(self, tmp_path: Path) -> None:
         root = tmp_path / "memprocfs"
@@ -273,7 +275,7 @@ class TestThreadsExtractor:
         out_dir.mkdir()
         ThreadsExtractor().extract(root, out_dir)
         table = read_csv_safe(out_dir / "threads.csv")
-        assert table.rows[0][-4:] == ["", "", "", "ethread_mismatch"]
+        assert table.rows[0][-5:] == ["", "", "", "", "ethread_mismatch"]
 
     def test_vfs_ok_va_outside_modules(self, tmp_path: Path) -> None:
         root = tmp_path / "memprocfs"
@@ -299,7 +301,7 @@ class TestThreadsExtractor:
         out_dir.mkdir()
         ThreadsExtractor().extract(root, out_dir)
         table = read_csv_safe(out_dir / "threads.csv")
-        assert table.rows[0][-4:] == ["", "", "", "no_module"]
+        assert table.rows[0][-5:] == ["", "", "", "", "no_module"]
 
     def test_hit_inside_dll_prefers_tightest(self, tmp_path: Path) -> None:
         root = tmp_path / "memprocfs"
@@ -338,7 +340,13 @@ class TestThreadsExtractor:
         out_dir.mkdir()
         ThreadsExtractor().extract(root, out_dir)
         table = read_csv_safe(out_dir / "threads.csv")
-        assert table.rows[0][-4:] == ["lib.dll", r"C:\lib.dll", "0x7ff000001800", "ok"]
+        assert table.rows[0][-5:] == [
+            "lib.dll",
+            r"C:\lib.dll",
+            "0x7ff000001800",
+            "0x100",
+            "ok",
+        ]
 
     def test_pid4_early_createtime_still_fills_with_vfs(self, tmp_path: Path) -> None:
         """CreateTime earlier than process create no longer blocks the join."""
@@ -376,10 +384,11 @@ class TestThreadsExtractor:
         out_dir.mkdir()
         ThreadsExtractor().extract(root, out_dir)
         table = read_csv_safe(out_dir / "threads.csv")
-        assert table.rows[0][-4:] == [
+        assert table.rows[0][-5:] == [
             "ntoskrnl.exe",
             r"\SystemRoot\system32\ntoskrnl.exe",
             "0xfffff8079dc00000",
+            "0xa171c0",
             "ok",
         ]
 
@@ -404,10 +413,11 @@ class TestThreadsExtractor:
         result = ThreadsExtractor(allow_csv_only=True).extract(root, out_dir)
         assert result.ok
         table = read_csv_safe(out_dir / "threads.csv")
-        assert table.rows[0][-4:] == [
+        assert table.rows[0][-5:] == [
             "app.exe",
             r"C:\app.exe",
             "0x7ff000000000",
+            "0x1234",
             "ok",
         ]
 
@@ -435,7 +445,7 @@ class TestThreadsExtractor:
         out_dir.mkdir()
         ThreadsExtractor().extract(root, out_dir)
         table = read_csv_safe(out_dir / "threads.csv")
-        assert table.rows[0][-4:] == ["", "", "", "no_modules_for_pid"]
+        assert table.rows[0][-5:] == ["", "", "", "", "no_modules_for_pid"]
 
     def test_end_reconstructed_from_size_when_missing(self, tmp_path: Path) -> None:
         root = tmp_path / "memprocfs"
@@ -470,7 +480,13 @@ class TestThreadsExtractor:
         out_dir.mkdir()
         ThreadsExtractor().extract(root, out_dir)
         table = read_csv_safe(out_dir / "threads.csv")
-        assert table.rows[0][-4:] == ["app.exe", r"C:\app.exe", "0x1000", "ok"]
+        assert table.rows[0][-5:] == [
+            "app.exe",
+            r"C:\app.exe",
+            "0x1000",
+            "0x5",
+            "ok",
+        ]
 
     def test_preserves_original_thread_columns(self, tmp_path: Path) -> None:
         root = tmp_path / "memprocfs"

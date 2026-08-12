@@ -70,6 +70,8 @@ Threads module enrichment (StartModule*) also requires the MemProcFS
 process/thread VFS tree by default:
   <memprocfs-path>\pid\<PID>\threads\<TID>\info.txt
 so CSV ETHREAD can be checked against MemProcFS's PID/TID listing.
+When the join succeeds, StartModuleRva is filled for ASLR-stable
+comparison across dumps.
 CSV-only trees (no pid\): use --threads-allow-csv-only (range join only;
 less safe for PID-reuse cases).
 

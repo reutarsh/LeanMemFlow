@@ -1,11 +1,11 @@
 LeanMemFlow repository tree
-Generated: 2026-08-11 11:31:06 UTC
+Generated: 2026-08-12 10:57:03 UTC
 Root: C:\work\MemProc\LeanMemFlow
 
 Excluded directories: .git, node_modules, __pycache__, .pytest_cache,
   .venv, venv, bin, obj, .vs, dist, build
 
-Totals: 7 directories, 60 files, 419.4 KB
+Totals: 7 directories, 60 files, 424.7 KB
 
 Extension counts:
   .py: 50
@@ -31,13 +31,13 @@ C:\work\MemProc\LeanMemFlow/
 │       ├── repository-tree.mdc  (1.2 KB)  [.cursor/rules/repository-tree.mdc]
 │       └── verify-before-dropping-fields.mdc  (1.4 KB)  [.cursor/rules/verify-before-dropping-fields.mdc]
 ├── docs/
-│   ├── 10_extractor_field_reference.md  (33.7 KB)  [docs/10_extractor_field_reference.md]
+│   ├── 10_extractor_field_reference.md  (34.2 KB)  [docs/10_extractor_field_reference.md]
 │   └── 2026-03-10-plugin-extractor-architecture.md  (2.8 KB)  [docs/2026-03-10-plugin-extractor-architecture.md]
 ├── extractors/
 │   ├── __init__.py  (1.7 KB)  [extractors/__init__.py]
 │   ├── base.py  (5.1 KB)  [extractors/base.py]
 │   ├── devices.py  (506 B)  [extractors/devices.py]
-│   ├── dlls.py  (7.7 KB)  [extractors/dlls.py]
+│   ├── dlls.py  (8.4 KB)  [extractors/dlls.py]
 │   ├── drivers.py  (2.0 KB)  [extractors/drivers.py]
 │   ├── files.py  (496 B)  [extractors/files.py]
 │   ├── findevil.py  (516 B)  [extractors/findevil.py]
@@ -51,7 +51,7 @@ C:\work\MemProc\LeanMemFlow/
 │   ├── processes.py  (3.5 KB)  [extractors/processes.py]
 │   ├── services.py  (2.1 KB)  [extractors/services.py]
 │   ├── tasks.py  (2.5 KB)  [extractors/tasks.py]
-│   ├── threads.py  (11.5 KB)  [extractors/threads.py]
+│   ├── threads.py  (12.1 KB)  [extractors/threads.py]
 │   ├── timeline_kernelobject_text.py  (4.3 KB)  [extractors/timeline_kernelobject_text.py]
 │   ├── timeline_net_text.py  (6.7 KB)  [extractors/timeline_net_text.py]
 │   ├── timeline_ntfs_text.py  (3.4 KB)  [extractors/timeline_ntfs_text.py]
@@ -69,13 +69,13 @@ C:\work\MemProc\LeanMemFlow/
 ├── tests/
 │   ├── __init__.py  (2 B)  [tests/__init__.py]
 │   ├── test_csv_io.py  (9.7 KB)  [tests/test_csv_io.py]
-│   ├── test_dlls_enrichment.py  (9.2 KB)  [tests/test_dlls_enrichment.py]
+│   ├── test_dlls_enrichment.py  (11.4 KB)  [tests/test_dlls_enrichment.py]
 │   ├── test_extractors.py  (13.2 KB)  [tests/test_extractors.py]
 │   ├── test_handles.py  (8.8 KB)  [tests/test_handles.py]
 │   ├── test_memprocfs_stage.py  (5.2 KB)  [tests/test_memprocfs_stage.py]
 │   ├── test_module_pe_enrichment.py  (12.3 KB)  [tests/test_module_pe_enrichment.py]
 │   ├── test_pe_enrichment.py  (9.1 KB)  [tests/test_pe_enrichment.py]
-│   ├── test_threads.py  (17.6 KB)  [tests/test_threads.py]
+│   ├── test_threads.py  (17.8 KB)  [tests/test_threads.py]
 │   ├── test_timeline_kernelobject_text.py  (10.5 KB)  [tests/test_timeline_kernelobject_text.py]
 │   ├── test_timeline_net_text.py  (23.3 KB)  [tests/test_timeline_net_text.py]
 │   ├── test_timeline_ntfs_text.py  (19.1 KB)  [tests/test_timeline_ntfs_text.py]
@@ -88,7 +88,7 @@ C:\work\MemProc\LeanMemFlow/
 │   └── update_repository_tree.py  (3.7 KB)  [tools/update_repository_tree.py]
 ├── .gitignore  (21 B)  [.gitignore]
 ├── pyproject.toml  (1.9 KB)  [pyproject.toml]
-├── README.txt  (4.4 KB)  [README.txt]
-├── REPOSITORY_TREE.txt  (5.0 KB)  [REPOSITORY_TREE.txt]
-├── requirements.txt  (384 B)  [requirements.txt]
-└── run_extract.py  (9.6 KB)  [run_extract.py]
+├── README.txt  (4.6 KB)  [README.txt]
+├── REPOSITORY_TREE.txt  (5.7 KB)  [REPOSITORY_TREE.txt]
+├── requirements.txt  (420 B)  [requirements.txt]
+└── run_extract.py  (9.7 KB)  [run_extract.py]

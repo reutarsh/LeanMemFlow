@@ -4,6 +4,8 @@ Keeps MemProcFS columns and appends StartModule* plus StartModuleStatus.
 
 Module join: same PID and module.Start <= addr <= module.End (inclusive).
 Address preference: nonzero Win32StartAddress, else StartAddress.
+On a hit, also fills StartModuleRva (addr - base) for ASLR-stable
+comparison across dumps of the same image.
 
 Ownership gate (default): require MemProcFS VFS
 pid/<PID>/threads/<TID>/info.txt with ETHREAD matching the CSV row.
@@ -36,6 +38,7 @@ __all__ = [
     "START_MODULE_HEADERS",
     "ThreadsExtractor",
     "find_containing_module",
+    "format_module_rva",
     "normalize_hex_address",
     "parse_address",
     "parse_info_txt_ethread",
@@ -47,6 +50,7 @@ START_MODULE_HEADERS: tuple[str, ...] = (
     "StartModuleName",
     "StartModulePath",
     "StartModuleBase",
+    "StartModuleRva",
     "StartModuleStatus",
 )
 
@@ -72,6 +76,11 @@ def resolve_thread_start_address(start_address: str, win32_start_address: str) -
     if win32 is not None and win32 != 0:
         return win32
     return parse_address(start_address)
+
+
+def format_module_rva(rva: int) -> str:
+    """Format a module-relative start offset for StartModuleRva."""
+    return f"0x{rva:x}"
 
 
 def find_containing_module(
@@ -193,20 +202,21 @@ class ThreadsExtractor(BaseExtractor):
         pid: str,
         address: int | None,
         module_index: dict[str, list[_ModuleRange]],
-    ) -> tuple[str, str, str, str]:
-        """Return (name, path, base, status) for a post-ownership-gate row."""
+    ) -> tuple[str, str, str, str, str]:
+        """Return (name, path, base, rva, status) after ownership gate."""
         if address is None:
-            return "", "", "", "no_address"
+            return "", "", "", "", "no_address"
 
         modules = module_index.get(pid, [])
         if not modules:
-            return "", "", "", "no_modules_for_pid"
+            return "", "", "", "", "no_modules_for_pid"
 
         match = find_containing_module(modules, address)
         if match is None:
-            return "", "", "", "no_module"
+            return "", "", "", "", "no_module"
 
-        return match.name, match.path, match.base_str, "ok"
+        rva_str = format_module_rva(address - match.start)
+        return match.name, match.path, match.base_str, rva_str, "ok"
 
     def extract(self, memprocfs_root: Any, out_dir: Path) -> ExtractResult:
         root = Path(memprocfs_root)
@@ -269,6 +279,7 @@ class ThreadsExtractor(BaseExtractor):
             module_name = ""
             module_path = ""
             module_base = ""
+            module_rva = ""
 
             if not self.allow_csv_only:
                 vfs_status = verify_thread_vfs(root, pid, tid, ethread, ctx=ctx)
@@ -283,6 +294,7 @@ class ThreadsExtractor(BaseExtractor):
                         module_name,
                         module_path,
                         module_base,
+                        module_rva,
                         status,
                     ) = self._resolve_module_fields(
                         pid=pid,
@@ -294,7 +306,13 @@ class ThreadsExtractor(BaseExtractor):
                     row.get(start_col, "") if start_col else "",
                     row.get(win32_col, "") if win32_col else "",
                 )
-                module_name, module_path, module_base, status = self._resolve_module_fields(
+                (
+                    module_name,
+                    module_path,
+                    module_base,
+                    module_rva,
+                    status,
+                ) = self._resolve_module_fields(
                     pid=pid,
                     address=address,
                     module_index=module_index,
@@ -306,6 +324,7 @@ class ThreadsExtractor(BaseExtractor):
                 "StartModuleName": module_name,
                 "StartModulePath": module_path,
                 "StartModuleBase": module_base,
+                "StartModuleRva": module_rva,
                 "StartModuleStatus": status,
             }
             for header in START_MODULE_HEADERS:
