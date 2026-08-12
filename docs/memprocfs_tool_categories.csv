@@ -1,0 +1,24 @@
+category,output_csv,extractor,purpose
+Drivers,drivers.csv,drivers,Lists loaded kernel driver images with base address on-disk path and SCM service name for rootkit and driver-tampering review.
+Drivers,unloaded_modules.csv,unloaded_modules,Records recently unloaded kernel and user modules from the PsLoadedModuleList ring buffer to surface stealth load-unload activity.
+Physical Connections Mapping,devices.csv,devices,Maps kernel device objects to owning drivers attached-device chains and volume paths for physical device-stack connectivity.
+Files and tables Mapping,files.csv,files,Lists open file objects in memory with device-backed paths showing which process holds each on-disk file.
+Files and tables Mapping,handles.csv,handles,Maps each process open kernel handles to target objects such as files registry keys sections and tokens with optional ProcessName enrichment.
+Files and tables Mapping,dlls.csv,dlls,Maps every PE module loaded in each process with base path module_type and optional PE header fields for image-to-process analysis.
+Files and tables Mapping,modules.csv,modules,Pass-through copy of MemProcFS module listings per process when the raw modules.csv schema is needed alongside dlls.csv.
+Files and tables Mapping,timeline_ntfs.csv,timelines,NTFS MFT-ordered filesystem timeline of file create modify and access events recovered from memory-resident metadata.
+Files and tables Mapping,timeline_registry.csv,timelines,Registry key and value activity ordered by timestamp for configuration and persistence change analysis.
+Files and tables Mapping,timeline_kernelobject.csv,timelines,Kernel object-manager paths and addresses over time showing named system object creation and use.
+Services Mapping,services.csv,services,Windows Service Control Manager entries with state startup type binary path display name run-as account and hosting PID.
+Services Mapping,tasks.csv,tasks,Scheduled task definitions recovered from memory including command arguments triggers and author.
+Services Mapping,timeline_task.csv,timelines,Chronological scheduled task registration and execution events with task name command line parameters and user context.
+Processes and sub processes Mapping,process.csv,processes,Live process list with PID parent chain image path command line token owner SID username creation time and WoW64 flag.
+Processes and sub processes Mapping,threads.csv,threads,All kernel threads with scheduler state start addresses and optional StartModule fields tying execution to containing modules.
+Processes and sub processes Mapping,timeline_process.csv,timelines,Process creation and termination events with parent PID EPROCESS address process name and account.
+Processes and sub processes Mapping,timeline_thread.csv,timelines,Thread creation and exit events with TID and ETHREAD address for intra-process execution timeline.
+Processes and sub processes Mapping,timeline_all.csv,timelines,Merged master timeline combining process network filesystem registry and other subsystem events chronologically.
+System Update Information Mapping,timeline_prefetch.csv,timelines,Prefetch execution timestamps for programs run on the system including Windows Update and installer activity.
+Network connection status Mapping,net.csv,netstat,Active and listening TCP/UDP sockets with protocol connection state local and remote endpoints and owning PID at capture time.
+Network connection status Mapping,timeline_net.csv,timelines,Historical network socket open and close events with protocol state endpoints and connection description.
+Network connection status Mapping,timeline_web.csv,timelines,Browser visit download and credential-related web events with parsed URL browser name and browser process PID.
+Process fixation Mapping,findevil.csv,findevil,FindEvil heuristic findings such as injected PE hidden modules executable private memory and broken process chains flagged for triage.
