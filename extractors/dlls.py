@@ -5,14 +5,16 @@ used only when ``modules.csv`` is absent (legacy or custom trees).
 
 ``module_type`` is derived from MemProcFS ``Name`` prefixes when the source
 row has no ``module_type`` column. ``entry_point_rva``, empty absolute
-``entry_point``, empty ``pe_timedatestamp``, and empty ``pe_checksum`` are
-filled from optional dump PE enrichment when ``dump_path`` is supplied.
+``entry_point``, empty ``pe_timedatestamp`` / ``pe_timedatestamp_utc``, and
+empty ``pe_checksum`` are filled from optional dump PE enrichment when
+``dump_path`` is supplied.
 """
 
 from __future__ import annotations
 
 import csv
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +28,8 @@ _COL_BASE = 4
 _COL_ENTRY = 6
 _COL_ENTRY_RVA = 7
 _COL_TIMESTAMP = 10
-_COL_CHECKSUM = 11
+_COL_TIMESTAMP_UTC = 11
+_COL_CHECKSUM = 12
 
 
 def parse_address(value: str | None) -> int | None:
@@ -72,6 +75,37 @@ def format_rva(value: int) -> str:
     return f"0x{value:x}"
 
 
+def format_pe_timedatestamp_utc(value: int | str | None) -> str:
+    """Format PE ``TimeDateStamp`` Unix seconds as ``YYYY-MM-DD HH:MM:SS`` UTC.
+
+    Returns empty for blank, non-positive, or unparseable values (``0`` means unset).
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return ""
+        try:
+            if text.lower().startswith("0x"):
+                ts = int(text, 16)
+            else:
+                ts = int(text, 10)
+        except ValueError:
+            return ""
+    else:
+        try:
+            ts = int(value)
+        except (TypeError, ValueError):
+            return ""
+    if ts <= 0:
+        return ""
+    try:
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    except (OverflowError, OSError, ValueError):
+        return ""
+
+
 def merge_enrichment_rows(
     rows: list[list[str]],
     enrichment: dict[tuple[int, int], Any],
@@ -79,6 +113,7 @@ def merge_enrichment_rows(
     """Fill empty entry_point / entry_point_rva / PE stamp fields from dump enrichment.
 
     ``0`` is valid for pe_timedatestamp and pe_checksum and is written.
+    pe_timedatestamp_utc is derived when empty; ``0`` leaves the date blank.
     """
     stats = {
         "matched": 0,
@@ -118,6 +153,9 @@ def merge_enrichment_rows(
             row[_COL_TIMESTAMP] = str(timestamp)
             stats["pe_timedatestamp"] += 1
 
+        if not row[_COL_TIMESTAMP_UTC].strip() and row[_COL_TIMESTAMP].strip():
+            row[_COL_TIMESTAMP_UTC] = format_pe_timedatestamp_utc(row[_COL_TIMESTAMP])
+
         checksum = getattr(item, "pe_checksum", None)
         if not row[_COL_CHECKSUM].strip() and checksum is not None:
             row[_COL_CHECKSUM] = str(checksum)
@@ -134,7 +172,8 @@ class DllsExtractor(BaseExtractor):
     HEADERS = [
         "pid", "process_name", "module_name", "module_path",
         "base_address", "size", "entry_point", "entry_point_rva",
-        "is_wow64", "module_type", "pe_timedatestamp", "pe_checksum",
+        "is_wow64", "module_type", "pe_timedatestamp", "pe_timedatestamp_utc",
+        "pe_checksum",
     ]
 
     @staticmethod
@@ -159,6 +198,15 @@ class DllsExtractor(BaseExtractor):
         if not module_type:
             module_type = parse_module_type(module_name)
 
+        timestamp = self._cell(
+            row, "pe_timedatestamp", "timedatestamp", "TimeDateStamp"
+        ).strip()
+        timestamp_utc = self._cell(
+            row, "pe_timedatestamp_utc", "timedatestamp_utc"
+        ).strip()
+        if not timestamp_utc and timestamp:
+            timestamp_utc = format_pe_timedatestamp_utc(timestamp)
+
         return [
             self._cell(row, "pid", "PID").strip(),
             self._cell(row, "process_name", "Process", "process").strip(),
@@ -175,7 +223,8 @@ class DllsExtractor(BaseExtractor):
             ).strip(),
             self._cell(row, "is_wow64", "Wow64", "wow64").strip(),
             module_type,
-            self._cell(row, "pe_timedatestamp", "timedatestamp", "TimeDateStamp").strip(),
+            timestamp,
+            timestamp_utc,
             self._cell(row, "pe_checksum", "checksum", "Checksum").strip(),
         ]
 

@@ -11,6 +11,7 @@ import pytest
 from extractors.dlls import (
     DllsExtractor,
     format_address,
+    format_pe_timedatestamp_utc,
     format_rva,
     merge_enrichment_rows,
     parse_address,
@@ -48,11 +49,12 @@ def _canonical_row(
     wow64: str = "",
     module_type: str = "NORMAL",
     timestamp: str = "",
+    timestamp_utc: str = "",
     checksum: str = "",
 ) -> list[str]:
     return [
         pid, process, module, path, base, size, entry, entry_rva,
-        wow64, module_type, timestamp, checksum,
+        wow64, module_type, timestamp, timestamp_utc, checksum,
     ]
 
 
@@ -182,7 +184,8 @@ def test_pe_fields_fill_empty_cells() -> None:
     assert merged[0][6] == format_address(0x1100)
     assert merged[0][7] == format_rva(0x100)
     assert merged[0][10] == "99"
-    assert merged[0][11] == "3405691582"
+    assert merged[0][11] == "1970-01-01 00:01:39"
+    assert merged[0][12] == "3405691582"
     assert stats["pe_timedatestamp"] == 1
     assert stats["pe_checksum"] == 1
 
@@ -191,7 +194,7 @@ def test_pe_checksum_zero_is_written() -> None:
     rows = [_canonical_row(base=format_address(0x1000))]
     enrichment = _enrichment(10, 0x1000, pe_checksum=0)
     merged, stats = merge_enrichment_rows([row[:] for row in rows], enrichment)
-    assert merged[0][11] == "0"
+    assert merged[0][12] == "0"
     assert stats["pe_checksum"] == 1
 
 
@@ -200,6 +203,7 @@ def test_pe_timedatestamp_zero_is_written() -> None:
     enrichment = _enrichment(10, 0x1000, pe_timedatestamp=0)
     merged, stats = merge_enrichment_rows([row[:] for row in rows], enrichment)
     assert merged[0][10] == "0"
+    assert merged[0][11] == ""
     assert stats["pe_timedatestamp"] == 1
 
 
@@ -207,7 +211,7 @@ def test_existing_pe_checksum_is_preserved() -> None:
     rows = [_canonical_row(base=format_address(0x1000), checksum="54321")]
     enrichment = _enrichment(10, 0x1000, pe_checksum=999)
     merged, stats = merge_enrichment_rows([row[:] for row in rows], enrichment)
-    assert merged[0][11] == "54321"
+    assert merged[0][12] == "54321"
     assert stats["pe_checksum"] == 0
 
 
@@ -216,7 +220,15 @@ def test_existing_pe_timedatestamp_is_preserved() -> None:
     enrichment = _enrichment(10, 0x1000, pe_timedatestamp=999)
     merged, stats = merge_enrichment_rows([row[:] for row in rows], enrichment)
     assert merged[0][10] == "12345"
+    assert merged[0][11] == "1970-01-01 03:25:45"
     assert stats["pe_timedatestamp"] == 0
+
+
+def test_format_pe_timedatestamp_utc() -> None:
+    assert format_pe_timedatestamp_utc(305419896) == "1979-09-05 22:51:36"
+    assert format_pe_timedatestamp_utc("0") == ""
+    assert format_pe_timedatestamp_utc("") == ""
+    assert format_pe_timedatestamp_utc("not-a-time") == ""
 
 
 @patch("extractors.dlls.DllsExtractor._load_enrichment")
@@ -235,6 +247,7 @@ def test_pe_fields_via_extract(mock_load: MagicMock, tmp_path: Path) -> None:
     rows = _read_dlls(out)
     assert rows[0]["pe_checksum"] == "3405691582"
     assert rows[0]["pe_timedatestamp"] == "305419896"
+    assert rows[0]["pe_timedatestamp_utc"] == "1979-09-05 22:51:36"
 
 
 @patch("extractors.dlls.DllsExtractor._load_enrichment", return_value={})
@@ -246,7 +259,8 @@ def test_output_csv_column_order(mock_load: MagicMock, tmp_path: Path) -> None:
     assert DllsExtractor.HEADERS == [
         "pid", "process_name", "module_name", "module_path",
         "base_address", "size", "entry_point", "entry_point_rva",
-        "is_wow64", "module_type", "pe_timedatestamp", "pe_checksum",
+        "is_wow64", "module_type", "pe_timedatestamp", "pe_timedatestamp_utc",
+        "pe_checksum",
     ]
     with (out / "dlls.csv").open("r", encoding="utf-8", newline="") as fh:
         header = next(csv.reader(fh))
